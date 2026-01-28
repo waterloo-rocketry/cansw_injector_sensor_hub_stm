@@ -1,13 +1,23 @@
 #MicroXplorer Configuration settings - do not modify
 ADC1.Channel-1\#ChannelRegularConversion=ADC_CHANNEL_5
+ADC1.Channel-2\#ChannelRegularConversion=ADC_CHANNEL_7
+ADC1.Channel-3\#ChannelRegularConversion=ADC_CHANNEL_9
 ADC1.EnableRegularConversion=ENABLE
-ADC1.IPParameters=EnableRegularConversion,Rank-1\#ChannelRegularConversion,Channel-1\#ChannelRegularConversion,SamplingTime-1\#ChannelRegularConversion,OffsetNumber-1\#ChannelRegularConversion,OffsetSignedSaturation-1\#ChannelRegularConversion,NbrOfConversionFlag,NbrOfConversion,master
-ADC1.NbrOfConversion=1
+ADC1.IPParameters=EnableRegularConversion,Rank-1\#ChannelRegularConversion,Channel-1\#ChannelRegularConversion,SamplingTime-1\#ChannelRegularConversion,OffsetNumber-1\#ChannelRegularConversion,OffsetSignedSaturation-1\#ChannelRegularConversion,NbrOfConversionFlag,NbrOfConversion,master,Rank-2\#ChannelRegularConversion,Channel-2\#ChannelRegularConversion,SamplingTime-2\#ChannelRegularConversion,OffsetNumber-2\#ChannelRegularConversion,OffsetSignedSaturation-2\#ChannelRegularConversion,Rank-3\#ChannelRegularConversion,Channel-3\#ChannelRegularConversion,SamplingTime-3\#ChannelRegularConversion,OffsetNumber-3\#ChannelRegularConversion,OffsetSignedSaturation-3\#ChannelRegularConversion
+ADC1.NbrOfConversion=3
 ADC1.NbrOfConversionFlag=1
 ADC1.OffsetNumber-1\#ChannelRegularConversion=ADC_OFFSET_NONE
+ADC1.OffsetNumber-2\#ChannelRegularConversion=ADC_OFFSET_NONE
+ADC1.OffsetNumber-3\#ChannelRegularConversion=ADC_OFFSET_NONE
 ADC1.OffsetSignedSaturation-1\#ChannelRegularConversion=DISABLE
+ADC1.OffsetSignedSaturation-2\#ChannelRegularConversion=DISABLE
+ADC1.OffsetSignedSaturation-3\#ChannelRegularConversion=DISABLE
 ADC1.Rank-1\#ChannelRegularConversion=1
+ADC1.Rank-2\#ChannelRegularConversion=2
+ADC1.Rank-3\#ChannelRegularConversion=3
 ADC1.SamplingTime-1\#ChannelRegularConversion=ADC_SAMPLETIME_1CYCLE_5
+ADC1.SamplingTime-2\#ChannelRegularConversion=ADC_SAMPLETIME_1CYCLE_5
+ADC1.SamplingTime-3\#ChannelRegularConversion=ADC_SAMPLETIME_1CYCLE_5
 ADC1.master=1
 CAD.formats=[]
 CAD.pinconfig=Dual
