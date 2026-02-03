@@ -118,9 +118,37 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+
+
+
+
   while (1)
   {
     /* USER CODE END WHILE */
+
+	HAL_ADC_Start(&hadc1);
+
+
+	if (HAL_ADC_PollForConversion(&hadc1, 20) == HAL_OK) 	// READ RANK 1
+	{
+		uint32_t val_pin35 = HAL_ADC_GetValue(&hadc1); 		// Channel 1
+	}
+
+	// READ RANK 2
+	if (HAL_ADC_PollForConversion(&hadc1, 20) == HAL_OK)	// READ RANK 2
+	{
+		uint32_t val_pin34 = HAL_ADC_GetValue(&hadc1); 		// Channel 2
+	}
+
+	// READ RANK 3
+	if (HAL_ADC_PollForConversion(&hadc1, 20) == HAL_OK)	// READ RANK 3
+	{
+		uint32_t val_pin31 = HAL_ADC_GetValue(&hadc1); 		// Channel 3
+	}
+
+	HAL_ADC_Stop(&hadc1);
+	HAL_Delay(20);
 
     /* USER CODE BEGIN 3 */
 
