@@ -21,34 +21,40 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "canlib.h"
+#include "platform.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+typedef enum {
+  PT_1 = 0,
+  PT_2,
+  PT_3,
+  PT_COUNT,
+} PtIndexTypeDef;
 
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-// Length of poll timeout for each ADC read, in ms
-#define ADC_POLL_TIMEOUT 10
+#define ADC_POLL_TIMEOUT_ms 10
+
 
 /* Calculation for ADC_SCALE_FACTOR:
  * TODO: Change this calculation as specified in ref manual 25.4.35 instead
  * of just assuming vrefint=2.5V
  *
  * VREFINT corresponds to ~2.5V as per
- * Took SUM of 1000 reads of VREFINT.
- * SUM = 25 771 688, AVG = (SUM / 1000) LSB/2500mV
+ * Took SUM of 1000 reads of VREFINT, SUM = 25 771 688, AVG = (SUM / 1000) LSB/2500mV
  * So to convert read value X from LSB to mV we take
  *  (X LSB) * (2500mV / AVG LSB)
- * =(X * 2500 / (SUM / 1000)) mV
  * =(X * 2 500 000 / SUM) mV
- * =(X * ADC_SCALE_FACTOR) mV
+ * =(X * ADC_SCALE_mV_per_LSB) mV
 */
-#define ADC_SCALE_FACTOR 2500000.0f / 25771688.0f
+#define ADC_SCALE_mV_per_LSB 2500000.0f / 25771688.0f
 
 /* USER CODE END PD */
 
@@ -60,6 +66,8 @@
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
+FDCAN_HandleTypeDef hfdcan1;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -69,12 +77,24 @@ void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_FDCAN1_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void can_callback(const can_msg_t*);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+volatile bool seen_can_msg = false;
+
+/* Handler for CAN messages. */
+static void can_callback(const can_msg_t* msg) {
+  seen_can_msg = true;
+  switch (get_message_type(msg)) {
+    default:
+      break;
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -111,39 +131,45 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_FDCAN1_Init();
   /* USER CODE BEGIN 2 */
-  // Order: PT1, PT2, PT3
-  uint32_t pt_adc_buf[3];
+
+  uint32_t pt_adc_buf[PT_COUNT]; // in millivolts
+  uint32_t last_msg_millis = 0;
+
+  stm32h7_can_init(&hfdcan1, can_callback);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    // Read pressure transducer (PT) readings from ADC.
+    // Configured discontinuous conversion mode (ref manual 25.4.21) with n=1.
+    // Each start will only read one channel (of three selected). Order: 4, 5, 9
+
+    // Channel 4, PC4, PT_1
+    HAL_ADC_Start(&hadc1);
+    if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
+      pt_adc_buf[PT_1] = HAL_ADC_GetValue(&hadc1) * ADC_SCALE_mV_per_LSB;
+    }
+    // Channel 5, PB1, PT_2
+    HAL_ADC_Start(&hadc1);
+    if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
+      pt_adc_buf[PT_2] = HAL_ADC_GetValue(&hadc1) * ADC_SCALE_mV_per_LSB;
+    }
+    // Channel 9, PB0, PT_3
+    HAL_ADC_Start(&hadc1);
+    if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
+      pt_adc_buf[PT_3] = HAL_ADC_GetValue(&hadc1) * ADC_SCALE_mV_per_LSB;
+    }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-    // Configured discontinuous conversion mode (ref manual 25.4.21) with n=1.
-    // Each start will only read one channel (of three selected). Order: 4, 5, 9
 
-    // Channel 4, PC4, PT_1 (PT: pressure transducer)
-    HAL_ADC_Start(&hadc1);
-    if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT) == HAL_OK) {
-      pt_adc_buf[0] = HAL_ADC_GetValue(&hadc1) * ADC_SCALE_FACTOR;
-     }
-
-    // Channel 5, PB1, PT_2
-    HAL_ADC_Start(&hadc1);
-    if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT) == HAL_OK) {
-      pt_adc_buf[1] = HAL_ADC_GetValue(&hadc1) * ADC_SCALE_FACTOR;
-    }
-
-    // Channel 9, PB0, PT_3
-    HAL_ADC_Start(&hadc1);
-    if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT) == HAL_OK) {
-      pt_adc_buf[2] = HAL_ADC_GetValue(&hadc1) * ADC_SCALE_FACTOR;
-    }
   }
   /* USER CODE END 3 */
 }
@@ -167,17 +193,22 @@ void SystemClock_Config(void)
 
   while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
-  /** Macro to configure the PLL clock source
-  */
-  __HAL_RCC_PLL_PLLSOURCE_CONFIG(RCC_PLLSOURCE_HSI);
-
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLN = 9;
+  RCC_OscInitStruct.PLL.PLLP = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 13;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOMEDIUM;
+  RCC_OscInitStruct.PLL.PLLFRACN = 6144;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -287,6 +318,59 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief FDCAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FDCAN1_Init(void)
+{
+
+  /* USER CODE BEGIN FDCAN1_Init 0 */
+
+  /* USER CODE END FDCAN1_Init 0 */
+
+  /* USER CODE BEGIN FDCAN1_Init 1 */
+
+  /* USER CODE END FDCAN1_Init 1 */
+  hfdcan1.Instance = FDCAN1;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.TransmitPause = DISABLE;
+  hfdcan1.Init.ProtocolException = DISABLE;
+  hfdcan1.Init.NominalPrescaler = 16;
+  hfdcan1.Init.NominalSyncJumpWidth = 1;
+  hfdcan1.Init.NominalTimeSeg1 = 1;
+  hfdcan1.Init.NominalTimeSeg2 = 1;
+  hfdcan1.Init.DataPrescaler = 1;
+  hfdcan1.Init.DataSyncJumpWidth = 1;
+  hfdcan1.Init.DataTimeSeg1 = 1;
+  hfdcan1.Init.DataTimeSeg2 = 1;
+  hfdcan1.Init.MessageRAMOffset = 0;
+  hfdcan1.Init.StdFiltersNbr = 0;
+  hfdcan1.Init.ExtFiltersNbr = 0;
+  hfdcan1.Init.RxFifo0ElmtsNbr = 64;
+  hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
+  hfdcan1.Init.RxFifo1ElmtsNbr = 0;
+  hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
+  hfdcan1.Init.RxBuffersNbr = 0;
+  hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_8;
+  hfdcan1.Init.TxEventsNbr = 32;
+  hfdcan1.Init.TxBuffersNbr = 0;
+  hfdcan1.Init.TxFifoQueueElmtsNbr = 32;
+  hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+  hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN FDCAN1_Init 2 */
+
+  /* USER CODE END FDCAN1_Init 2 */
 
 }
 
