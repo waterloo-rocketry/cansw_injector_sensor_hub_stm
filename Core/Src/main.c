@@ -21,54 +21,47 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdint.h>
+
 #include "canlib.h"
 #include "low_pass_filter.h"
+
 #include "platform.h"
+#include "sensor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
-typedef enum {
-  PT_1 = 0,
-  PT_2,
-  PT_3,
-  PT_COUNT,
-} PtIndexTypeDef;
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define MAX_BUS_DEAD_TIME_ms 1000
+
 #define ADC_POLL_TIMEOUT_ms 10
 
-#define PT1_SAMPLE_PERIOD_ms 50
+#define PT1_SAMPLE_PERIOD_ms 50 // 20 Hz
 #define PT2_SAMPLE_PERIOD_ms 50
 #define PT3_SAMPLE_PERIOD_ms 50
 
-// Sends value once for every SEND_DOWNSAMPLE_FACTOR readings
-#define PT1_SEND_DOWNSAMPLE_FACTOR 0x3
-#define PT2_SEND_DOWNSAMPLE_FACTOR 0x3
-#define PT3_SEND_DOWNSAMPLE_FACTOR 0x3
+// Sends value once for every SEND_DOWNSAMPLE_MASK+1 readings
+#define PT1_SEND_DOWNSAMPLE_MASK 0x3 // 1 in 4
+#define PT2_SEND_DOWNSAMPLE_MASK 0x3
+#define PT3_SEND_DOWNSAMPLE_MASK 0x3
 
 #define PT1_LOW_PASS_RESPONSE_TIME_ms 2500.0
 #define PT2_LOW_PASS_RESPONSE_TIME_ms 2500.0
 #define PT3_LOW_PASS_RESPONSE_TIME_ms 2500.0
 
-/* Calculation for ADC_SCALE_FACTOR:
- * TODO: Change this calculation as specified in ref manual 25.4.35 instead
- * of just assuming vrefint=2.5V
- *
- * VREFINT corresponds to ~2.5V as per
- * Took SUM of 1000 reads of VREFINT, SUM = 25 772 000, AVG = (25 772) LSB/2500mV
- * So to convert read value X from LSB to mV we take
- *  (X LSB) * (2500mV / AVG LSB)
- * =(X * 2500 / 25772) mV
- * =(X * ADC_SCALE_MULTIPLIER / ADC_SCALE_DIVISOR) mV
-*/
-#define ADC_SCALE_MULTIPLIER 2500
-#define ADC_SCALE_DIVISOR 25772
+// Schematic unclear but at least on dev board D2 is white and D6 is blue
+#define LED_D2_REG GPIOD
+#define LED_D2_PIN GPIO_PIN_10
+#define LED_D6_REG GPIOD
+#define LED_D6_PIN GPIO_PIN_9
+
+#define LED_ON GPIO_PIN_SET
+#define LED_OFF GPIO_PIN_RESET
 
 /* USER CODE END PD */
 
@@ -95,7 +88,6 @@ static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
 /* USER CODE BEGIN PFP */
 static void can_callback(const can_msg_t * msg);
-static uint16_t adc_raw_to_mv(uint16_t raw_value);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -106,11 +98,19 @@ volatile bool seen_can_msg = false;
 /* Handler for CAN messages. */
 static void can_callback(const can_msg_t * msg) {
   seen_can_msg = true;
+  if (get_board_type_unique_id(msg) == BOARD_TYPE_UNIQUE_ID) {
+    return;
+  }
+
   switch (get_message_type(msg)) {
      case MSG_LEDS_ON:
+      HAL_GPIO_WritePin(LED_D2_REG, LED_D2_PIN, LED_ON);
+      HAL_GPIO_WritePin(LED_D6_REG, LED_D6_PIN, LED_ON);
       break;
 
     case MSG_LEDS_OFF:
+      HAL_GPIO_WritePin(LED_D2_REG, LED_D2_PIN, LED_OFF);
+      HAL_GPIO_WritePin(LED_D6_REG, LED_D6_PIN, LED_OFF);
       break;
 
     case MSG_RESET_CMD:
@@ -122,10 +122,6 @@ static void can_callback(const can_msg_t * msg) {
     default:
       break;
   }
-}
-
-static uint16_t adc_raw_to_mv(uint16_t raw_value) {
-  return (raw_value * ADC_SCALE_MULTIPLIER) / ADC_SCALE_DIVISOR;
 }
 
 /* USER CODE END 0 */
@@ -173,7 +169,7 @@ int main(void)
   uint16_t last_pt2_reading_millis = 2;
   uint16_t last_pt3_reading_millis = 3;
 
-  // Used to send value over CAN once every SEND_DOWNSAMPLE_FACTOR readings
+  // Used to send value over CAN once every SEND_DOWNSAMPLE_MASK+1 readings
   uint8_t pt1_reading_count = 0;
   uint8_t pt2_reading_count = 0;
   uint8_t pt3_reading_count = 0;
@@ -197,18 +193,27 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    // Read pressure transducer (PT) readings from ADC.
-    // Configured discontinuous conversion mode (ref manual 25.4.21) with n=1.
-    // Each start will only read one channel (of three selected). Channel order: 4, 5, 9
+    if (seen_can_msg) {
+      seen_can_msg = false;
+      last_msg_millis = millis();
+    }
 
-    // Channel 4, PC4, PT_1
+    if (millis() - last_msg_millis > MAX_BUS_DEAD_TIME_ms) {
+      HAL_NVIC_SystemReset();
+    }
+
+    /* Read pressure transducer (PT) readings from ADC.
+     *
+     * Configured discontinuous conversion mode (ref manual 25.4.21) with n=1.
+     * Each start will only read one channel (of three selected). Channel order: 4, 5, 9
+     */
+    // Channel 4, pin PC4, PT_1
     if (millis() - last_pt1_reading_millis > PT1_SAMPLE_PERIOD_ms) {
       last_pt1_reading_millis = millis();
       HAL_ADC_Start(&hadc1);
       if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        update_low_pass(pt1_low_pass_alpha, adc_raw_to_mv(HAL_ADC_GetValue(&hadc1)), &pt1_low_pass_state);
-        if (pt1_reading_count == PT1_SEND_DOWNSAMPLE_FACTOR) {
-          pt1_reading_count = 0;
+        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(HAL_ADC_GetValue(&hadc1)), &pt1_low_pass_state);
+        if ((pt1_reading_count & PT1_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
           build_analog_data_16bit_msg(
             PRIO_LOW,
@@ -223,15 +228,14 @@ int main(void)
       }
     }
 
-    // Channel 5, PB1, PT_2
+    // Channel 5, pin PB1, PT_2
     HAL_ADC_Start(&hadc1);
     if (millis() - last_pt2_reading_millis > PT2_SAMPLE_PERIOD_ms) {
       last_pt2_reading_millis = millis();
       HAL_ADC_Start(&hadc1);
       if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        update_low_pass(pt2_low_pass_alpha, adc_raw_to_mv(HAL_ADC_GetValue(&hadc1)), &pt2_low_pass_state);
-        if (pt2_reading_count == PT2_SEND_DOWNSAMPLE_FACTOR) {
-          pt2_reading_count = 0;
+        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(HAL_ADC_GetValue(&hadc1)), &pt2_low_pass_state);
+        if ((pt2_reading_count & PT2_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
           build_analog_data_16bit_msg(
             PRIO_LOW,
@@ -246,15 +250,14 @@ int main(void)
       }
     }
 
-    // Channel 9, PB0, PT_3
+    // Channel 9, pin PB0, PT_3
     HAL_ADC_Start(&hadc1);
     if (millis() - last_pt3_reading_millis > PT3_SAMPLE_PERIOD_ms) {
         last_pt3_reading_millis = millis();
         HAL_ADC_Start(&hadc1);
         if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-          update_low_pass(pt3_low_pass_alpha, adc_raw_to_mv(HAL_ADC_GetValue(&hadc1)), &pt3_low_pass_state);
-          if (pt3_reading_count == PT3_SEND_DOWNSAMPLE_FACTOR) {
-            pt3_reading_count = 0;
+          update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(HAL_ADC_GetValue(&hadc1)), &pt3_low_pass_state);
+          if ((pt3_reading_count & PT3_SEND_DOWNSAMPLE_MASK) == 0) {
             can_msg_t sensor_msg;
             build_analog_data_16bit_msg(
               PRIO_LOW,

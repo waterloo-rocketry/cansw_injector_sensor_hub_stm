@@ -6,4 +6,4 @@
 // Number of milliseconds since bootup, rolls over after around 49.7 days.
 uint32_t millis(void);
 
-#endif
+#endif // PLATFORM_H
