@@ -241,7 +241,6 @@ int main(void)
 
 #if PT2_SAMPLE_INTERVAL_ms
     // PT_2: ADC1 Channel 5, pin PB1
-    HAL_ADC_Start(&hadc1);
     if (millis() - last_pt2_reading_millis > PT2_SAMPLE_INTERVAL_ms) {
       last_pt2_reading_millis = millis();
       HAL_ADC_Start(&hadc1);
@@ -265,7 +264,6 @@ int main(void)
 
 #if PT3_SAMPLE_INTERVAL_ms
     // PT_3: ADC1 Channel 9, pin PB0
-    HAL_ADC_Start(&hadc1);
     if (millis() - last_pt3_reading_millis > PT3_SAMPLE_INTERVAL_ms) {
       last_pt3_reading_millis = millis();
       HAL_ADC_Start(&hadc1);
@@ -292,7 +290,6 @@ int main(void)
 #if HALL1_SAMPLE_INTERVAL_ms
     // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
     // HALL_1: ADC1 Channel 10, pin PC0
-    HAL_ADC_Start(&hadc1);
     if (millis() - last_hall1_reading_millis > HALL1_SAMPLE_INTERVAL_ms) {
       last_hall1_reading_millis = millis();
       HAL_ADC_Start(&hadc1);
