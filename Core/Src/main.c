@@ -22,12 +22,14 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "canlib.h"
 #include "low_pass_filter.h"
 
 #include "platform.h"
 #include "sensor.h"
+#include "adc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,8 +40,6 @@
 /* USER CODE BEGIN PD */
 
 #define MAX_BUS_DEAD_TIME_ms 1000
-
-#define ADC_POLL_TIMEOUT_ms 10
 
 // PT gets downsampled for sending
 #define PT1_SAMPLE_INTERVAL_ms 50 // 20 Hz
@@ -166,6 +166,8 @@ int main(void)
   MX_FDCAN1_Init();
   /* USER CODE BEGIN 2 */
 
+  // Used to configure all
+
   // Stagger initial millis to lower peak CAN bus message rate
   uint32_t last_msg_millis = 0;
 
@@ -193,6 +195,7 @@ int main(void)
 
   stm32h7_can_init(&hfdcan1, can_callback);
 
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -208,10 +211,8 @@ int main(void)
       HAL_NVIC_SystemReset();
     }
 
-    /* Read from ADC1.
-     *
-     * Configured discontinuous conversion mode (ref manual 25.4.21) with n=1.
-     * Each start will only read one channel. Channel order: 4, 5, 9, 10, 11
+    /*
+     * Read from ADC1. Number of conversions should be configured to 1.
      */
 
     // Pressure transducers
@@ -220,9 +221,11 @@ int main(void)
     // PT_1: ADC1 Channel 4, pin PC4
     if (millis() - last_pt1_reading_millis > PT1_SAMPLE_INTERVAL_ms) {
       last_pt1_reading_millis = millis();
-      HAL_ADC_Start(&hadc1);
-      if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(HAL_ADC_GetValue(&hadc1)), &pt1_low_pass_state);
+      uint32_t pt1_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_4, &pt1_raw);
+      uint16_t pt1_mv = adc_raw_to_mv(pt1_raw);
+      if (read_success) {
+        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(pt1_raw), &pt1_low_pass_state);
         if ((pt1_reading_count & PT1_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
           build_analog_data_16bit_msg(
@@ -243,15 +246,16 @@ int main(void)
     // PT_2: ADC1 Channel 5, pin PB1
     if (millis() - last_pt2_reading_millis > PT2_SAMPLE_INTERVAL_ms) {
       last_pt2_reading_millis = millis();
-      HAL_ADC_Start(&hadc1);
-      if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(HAL_ADC_GetValue(&hadc1)), &pt2_low_pass_state);
+      uint32_t pt2_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_5, &pt2_raw);
+      if (read_success) {
+        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(pt2_raw), &pt2_low_pass_state);
         if ((pt2_reading_count & PT2_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
           build_analog_data_16bit_msg(
             PRIO_LOW,
             millis(),
-            SENSOR_PT_CHANNEL_2,
+            SENSOR_PT_CHANNEL_1,
             pt2_low_pass_state,
             &sensor_msg
           );
@@ -266,9 +270,10 @@ int main(void)
     // PT_3: ADC1 Channel 9, pin PB0
     if (millis() - last_pt3_reading_millis > PT3_SAMPLE_INTERVAL_ms) {
       last_pt3_reading_millis = millis();
-      HAL_ADC_Start(&hadc1);
-      if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(HAL_ADC_GetValue(&hadc1)), &pt3_low_pass_state);
+      uint32_t pt3_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_9, &pt3_raw);
+      if (read_success) {
+        update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(pt3_raw), &pt3_low_pass_state);
         if ((pt3_reading_count & PT3_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
           build_analog_data_16bit_msg(
@@ -292,15 +297,15 @@ int main(void)
     // HALL_1: ADC1 Channel 10, pin PC0
     if (millis() - last_hall1_reading_millis > HALL1_SAMPLE_INTERVAL_ms) {
       last_hall1_reading_millis = millis();
-      HAL_ADC_Start(&hadc1);
-      if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        uint16_t hall1_mv = adc_raw_to_mv(HAL_ADC_GetValue(&hadc1));
+      uint32_t hall1_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_10, &hall1_raw);
+      if (read_success) {
         can_msg_t sensor_msg;
         build_analog_data_16bit_msg(
           PRIO_LOW,
           millis(),
           SENSOR_HALL_CHANNEL_1,
-          hall1_mv,
+          adc_raw_to_mv(hall1_raw),
           &sensor_msg
         );
         stm32h7_can_send(&sensor_msg);
@@ -313,15 +318,15 @@ int main(void)
     // HALL_2: ADC1 Channel 11, pin PC1
     if (millis() - last_hall2_reading_millis > HALL2_SAMPLE_INTERVAL_ms) {
       last_hall2_reading_millis = millis();
-      HAL_ADC_Start(&hadc1);
-      if (HAL_ADC_PollForConversion(&hadc1, ADC_POLL_TIMEOUT_ms) == HAL_OK) {
-        uint16_t hall2_mv = adc_raw_to_mv(HAL_ADC_GetValue(&hadc1));
+      uint32_t hall2_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_11, &hall2_raw);
+      if (read_success) {
         can_msg_t sensor_msg;
         build_analog_data_16bit_msg(
           PRIO_LOW,
           millis(),
           SENSOR_HALL_CHANNEL_2,
-          hall2_mv,
+          adc_raw_to_mv(hall2_raw),
           &sensor_msg
         );
         stm32h7_can_send(&sensor_msg);
@@ -421,12 +426,12 @@ static void MX_ADC1_Init(void)
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV2;
   hadc1.Init.Resolution = ADC_RESOLUTION_16B;
-  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
-  hadc1.Init.NbrOfConversion = 5;
-  hadc1.Init.DiscontinuousConvMode = ENABLE;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.NbrOfDiscConversion = 1;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
@@ -457,42 +462,6 @@ static void MX_ADC1_Init(void)
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
   sConfig.OffsetSignedSaturation = DISABLE;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_5;
-  sConfig.Rank = ADC_REGULAR_RANK_2;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_9;
-  sConfig.Rank = ADC_REGULAR_RANK_3;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_10;
-  sConfig.Rank = ADC_REGULAR_RANK_4;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_11;
-  sConfig.Rank = ADC_REGULAR_RANK_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
