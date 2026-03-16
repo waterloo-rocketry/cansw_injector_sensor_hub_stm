@@ -223,7 +223,6 @@ int main(void)
       last_pt1_reading_millis = millis();
       uint32_t pt1_raw;
       bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_4, &pt1_raw);
-      uint16_t pt1_mv = adc_raw_to_mv(pt1_raw);
       if (read_success) {
         update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(pt1_raw), &pt1_low_pass_state);
         if ((pt1_reading_count & PT1_SEND_DOWNSAMPLE_MASK) == 0) {
