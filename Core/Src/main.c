@@ -41,6 +41,8 @@
 
 #define MAX_BUS_DEAD_TIME_ms 1000
 
+// Setting any SAMPLE_INTERVAL_ms to 0 disables sampling for that channel.
+
 // PT gets downsampled for sending
 #define PT1_SAMPLE_INTERVAL_ms 50 // 20 Hz
 #define PT2_SAMPLE_INTERVAL_ms 50
@@ -50,6 +52,11 @@
 #define HALL1_SAMPLE_INTERVAL_ms 250 // 4 Hz
 #define HALL2_SAMPLE_INTERVAL_ms 250
 
+// Temperature (TC: thermocouple) gets read and sampled at same frequency
+#define TC1_SAMPLE_INTERVAL_ms 250 // 4 hz
+#define TC2_SAMPLE_INTERVAL_ms 250
+#define TC3_SAMPLE_INTERVAL_ms 250
+
 // Sends value once for every PTx_SEND_DOWNSAMPLE_MASK + 1 readings
 #define PT1_SEND_DOWNSAMPLE_MASK 0x3 // 1 in 4
 #define PT2_SEND_DOWNSAMPLE_MASK 0x3
@@ -58,6 +65,7 @@
 #define PT1_LOW_PASS_RESPONSE_TIME_ms 2500.0
 #define PT2_LOW_PASS_RESPONSE_TIME_ms 2500.0
 #define PT3_LOW_PASS_RESPONSE_TIME_ms 2500.0
+
 
 // Schematic unclear but at least on dev board D2 is white and D6 is blue
 #define LED_D2_REG GPIOD
@@ -176,6 +184,9 @@ int main(void)
   uint16_t last_pt3_reading_millis = 3;
   uint16_t last_hall1_reading_millis = 4;
   uint16_t last_hall2_reading_millis = 5;
+  uint16_t last_tc1_reading_millis = 6;
+  uint16_t last_tc2_reading_millis = 7;
+  uint16_t last_tc3_reading_millis = 8;
 
   // Used to send value over CAN once every PTx_SEND_DOWNSAMPLE_MASK+1 readings
   uint8_t pt1_reading_count = 0;
@@ -234,7 +245,9 @@ int main(void)
             pt1_low_pass_state,
             &sensor_msg
           );
-          stm32h7_can_send(&sensor_msg);
+          if (stm32h7_can_send_rdy()) {
+            stm32h7_can_send(&sensor_msg);
+          }
         }
         ++pt1_reading_count;
       }
@@ -258,7 +271,9 @@ int main(void)
             pt2_low_pass_state,
             &sensor_msg
           );
-          stm32h7_can_send(&sensor_msg);
+          if (stm32h7_can_send_rdy()) {
+            stm32h7_can_send(&sensor_msg);
+          }
         }
         ++pt2_reading_count;
       }
@@ -282,14 +297,14 @@ int main(void)
             pt3_low_pass_state,
             &sensor_msg
           );
-          stm32h7_can_send(&sensor_msg);
+          if (stm32h7_can_send_rdy()) {
+            stm32h7_can_send(&sensor_msg);
+          }
         }
         ++pt3_reading_count;
       }
     }
 #endif
-
-    // Hall sensors
 
 #if HALL1_SAMPLE_INTERVAL_ms
     // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
@@ -307,7 +322,9 @@ int main(void)
           adc_raw_to_mv(hall1_raw),
           &sensor_msg
         );
-        stm32h7_can_send(&sensor_msg);
+        if (stm32h7_can_send_rdy()) {
+          stm32h7_can_send(&sensor_msg);
+        }
       }
     }
 #endif
@@ -328,7 +345,60 @@ int main(void)
           adc_raw_to_mv(hall2_raw),
           &sensor_msg
         );
-        stm32h7_can_send(&sensor_msg);
+        if (stm32h7_can_send_rdy()) {
+          stm32h7_can_send(&sensor_msg);
+        }
+      }
+    }
+#endif
+
+#if TC1_SAMPLE_INTERVAL_ms
+    // TODO: Read from MAX6675 using SPI
+#endif
+
+#if TC2_SAMPLE_INTERVAL_ms
+    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
+    // TC2: ADC1 Channel 16 (DIFFERENTIAL), pins PA0 (INP/TC2+) and PA1 (INN/TC2-)
+    if (millis() - last_tc2_reading_millis > TC2_SAMPLE_INTERVAL_ms) {
+      last_tc2_reading_millis = millis();
+      uint32_t tc2_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_16, &tc2_raw);
+      if (read_success) {
+        can_msg_t sensor_msg;
+        build_analog_data_16bit_msg(
+          PRIO_LOW,
+          millis(),
+          SENSOR_THESEUS_TEMP_2,
+          // Note this is differential reading so the sent value is V_diff + ADC_RESOLUTION/2.
+          adc_raw_to_mv(tc2_raw),
+          &sensor_msg
+        );
+        if (stm32h7_can_send_rdy()) {
+          stm32h7_can_send(&sensor_msg);
+        }
+      }
+    }
+#endif
+
+#if TC3_SAMPLE_INTERVAL_ms
+    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
+    // TC3: ADC1 Channel 14, pin PA2
+    if (millis() - last_tc3_reading_millis > TC3_SAMPLE_INTERVAL_ms) {
+      last_tc3_reading_millis = millis();
+      uint32_t tc3_raw;
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_14, &tc3_raw);
+      if (read_success) {
+        can_msg_t sensor_msg;
+        build_analog_data_16bit_msg(
+          PRIO_LOW,
+          millis(),
+          SENSOR_THESEUS_TEMP_3,
+          adc_raw_to_mv(tc3_raw),
+          &sensor_msg
+        );
+        if (stm32h7_can_send_rdy()) {
+          stm32h7_can_send(&sensor_msg);
+        }
       }
     }
 #endif
@@ -538,6 +608,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
@@ -550,6 +621,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF6_SPI3;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

@@ -29,4 +29,5 @@ bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint3
   }
 
   *result = HAL_ADC_GetValue(hadc);
+  return true;
 }

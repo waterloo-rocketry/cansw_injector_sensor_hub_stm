@@ -5,6 +5,10 @@
 
 /*
  * Convert a raw ADC value to millivolts.
+ *
+ * For single-ended input, this returns the difference between input voltage (V_INP) and ground (V_REF-).
+ * For differential input, this returns (V_INP - V_INN) + ADC_FULL_SCALE/2, i.e. it's centered
+ * around ADC_FULL_SCALE/2. (25.4.7 in ref manual)
  */
 uint16_t adc_raw_to_mv(const uint32_t raw_value);
 
