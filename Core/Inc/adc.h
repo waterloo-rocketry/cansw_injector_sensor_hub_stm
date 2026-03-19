@@ -12,6 +12,6 @@
  *
  * Returns whether or not value was successfully read.
  */
-bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint32_t * result);
+bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint32_t single_differential, uint32_t * result);
 
 #endif /* INJ_SENSOR_ADC_H */

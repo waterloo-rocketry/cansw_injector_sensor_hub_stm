@@ -21,8 +21,7 @@ uint16_t pt_adc_raw_to_psi(const uint32_t raw_value) {
    *
    * 4 to 20mA PT range * 150R scale resistor = 600 to 3000 mV corresponding to 0 to 1450 PSI
    * Subtract mV by 600 to get: 0 to 2400 mV = 0 to 1450 PSI
-   * giving 1450PSI/2400mV = 29/48 PSI/mV.
-   * Therefore value_psi = (value_mv - 600 mV) * 29 / 48.
+   * Therefore value_psi = (value_mv - 600 mV) * 1450 PSI / 2400 mV.
    */
   const uint16_t value_mv = adc_raw_to_mv(raw_value);
   // 16-bit value in uint32_t multiplied by PT_RANGE_PSI won't wrap around

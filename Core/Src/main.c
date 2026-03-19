@@ -1,35 +1,35 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file           : main.c
+ * @brief          : Main program body
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2026 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "canlib.h"
 #include "low_pass_filter.h"
 
+#include "adc.h"
 #include "platform.h"
 #include "sensor.h"
-#include "adc.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -66,7 +66,6 @@
 #define PT2_LOW_PASS_RESPONSE_TIME_ms 2500.0
 #define PT3_LOW_PASS_RESPONSE_TIME_ms 2500.0
 
-
 // Schematic unclear but at least on dev board D2 is white and D6 is blue
 #define LED_D2_REG GPIOD
 #define LED_D2_PIN GPIO_PIN_10
@@ -80,7 +79,10 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define SAMPLE_FREQ_Hz(SAMPLE_INTERVAL_ms) (1000.0 / SAMPLE_INTERVAL_ms)
+#define LOW_PASS_ALPHA(RESPONSE_TIME, SAMPLE_INTERVAL_ms)                      \
+  ((SAMPLE_FREQ_Hz(SAMPLE_INTERVAL_ms) * RESPONSE_TIME / 5.0) /                   \
+   (1 + SAMPLE_FREQ_Hz(SAMPLE_INTERVAL_ms) * RESPONSE_TIME / 5.0))
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -99,7 +101,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
 /* USER CODE BEGIN PFP */
-static void can_callback(const can_msg_t * msg);
+static void can_callback(const can_msg_t *msg);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -108,31 +110,31 @@ static void can_callback(const can_msg_t * msg);
 volatile bool seen_can_msg = false;
 
 /* Handler for CAN messages. */
-static void can_callback(const can_msg_t * msg) {
+static void can_callback(const can_msg_t *msg) {
   seen_can_msg = true;
   if (get_board_type_unique_id(msg) == BOARD_TYPE_UNIQUE_ID) {
     return;
   }
 
   switch (get_message_type(msg)) {
-     case MSG_LEDS_ON:
-      HAL_GPIO_WritePin(LED_D2_REG, LED_D2_PIN, LED_ON);
-      HAL_GPIO_WritePin(LED_D6_REG, LED_D6_PIN, LED_ON);
-      break;
+  case MSG_LEDS_ON:
+    HAL_GPIO_WritePin(LED_D2_REG, LED_D2_PIN, LED_ON);
+    HAL_GPIO_WritePin(LED_D6_REG, LED_D6_PIN, LED_ON);
+    break;
 
-    case MSG_LEDS_OFF:
-      HAL_GPIO_WritePin(LED_D2_REG, LED_D2_PIN, LED_OFF);
-      HAL_GPIO_WritePin(LED_D6_REG, LED_D6_PIN, LED_OFF);
-      break;
+  case MSG_LEDS_OFF:
+    HAL_GPIO_WritePin(LED_D2_REG, LED_D2_PIN, LED_OFF);
+    HAL_GPIO_WritePin(LED_D6_REG, LED_D6_PIN, LED_OFF);
+    break;
 
-    case MSG_RESET_CMD:
-      if (check_board_need_reset(msg)) {
-        HAL_NVIC_SystemReset();
-      }
-      break;
+  case MSG_RESET_CMD:
+    if (check_board_need_reset(msg)) {
+      HAL_NVIC_SystemReset();
+    }
+    break;
 
-    default:
-      break;
+  default:
+    break;
   }
 }
 
@@ -197,22 +199,21 @@ int main(void)
   double pt2_low_pass_state = 0;
   double pt3_low_pass_state = 0;
 
-  double pt1_low_pass_alpha;
-  double pt2_low_pass_alpha;
-  double pt3_low_pass_alpha;
-  low_pass_filter_init(&pt1_low_pass_alpha, PT1_LOW_PASS_RESPONSE_TIME_ms);
-  low_pass_filter_init(&pt2_low_pass_alpha, PT2_LOW_PASS_RESPONSE_TIME_ms);
-  low_pass_filter_init(&pt3_low_pass_alpha, PT3_LOW_PASS_RESPONSE_TIME_ms);
+  // rocketlib low_pass_filter_init to calculate alpha seems incorrect to me
+  double pt1_low_pass_alpha =
+      LOW_PASS_ALPHA(PT1_LOW_PASS_RESPONSE_TIME_ms, PT1_SAMPLE_INTERVAL_ms);
+  double pt2_low_pass_alpha =
+      LOW_PASS_ALPHA(PT2_LOW_PASS_RESPONSE_TIME_ms, PT2_SAMPLE_INTERVAL_ms);
+  double pt3_low_pass_alpha =
+      LOW_PASS_ALPHA(PT3_LOW_PASS_RESPONSE_TIME_ms, PT3_SAMPLE_INTERVAL_ms);
 
   stm32h7_can_init(&hfdcan1, can_callback);
-
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  while (1) {
     if (seen_can_msg) {
       seen_can_msg = false;
       last_msg_millis = millis();
@@ -233,18 +234,15 @@ int main(void)
     if (millis() - last_pt1_reading_millis > PT1_SAMPLE_INTERVAL_ms) {
       last_pt1_reading_millis = millis();
       uint32_t pt1_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_4, &pt1_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_4, ADC_SINGLE_ENDED, &pt1_raw);
       if (read_success) {
-        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(pt1_raw), &pt1_low_pass_state);
+        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(pt1_raw),
+                        &pt1_low_pass_state);
         if ((pt1_reading_count & PT1_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
-          build_analog_data_16bit_msg(
-            PRIO_LOW,
-            millis(),
-            SENSOR_PT_CHANNEL_1,
-            pt1_low_pass_state,
-            &sensor_msg
-          );
+          build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_PT_CHANNEL_1,
+                                      pt1_low_pass_state, &sensor_msg);
           if (stm32h7_can_send_rdy()) {
             stm32h7_can_send(&sensor_msg);
           }
@@ -259,18 +257,15 @@ int main(void)
     if (millis() - last_pt2_reading_millis > PT2_SAMPLE_INTERVAL_ms) {
       last_pt2_reading_millis = millis();
       uint32_t pt2_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_5, &pt2_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_5, ADC_SINGLE_ENDED, &pt2_raw);
       if (read_success) {
-        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(pt2_raw), &pt2_low_pass_state);
+        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(pt2_raw),
+                        &pt2_low_pass_state);
         if ((pt2_reading_count & PT2_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
-          build_analog_data_16bit_msg(
-            PRIO_LOW,
-            millis(),
-            SENSOR_PT_CHANNEL_2,
-            pt2_low_pass_state,
-            &sensor_msg
-          );
+          build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_PT_CHANNEL_2,
+                                      pt2_low_pass_state, &sensor_msg);
           if (stm32h7_can_send_rdy()) {
             stm32h7_can_send(&sensor_msg);
           }
@@ -285,18 +280,15 @@ int main(void)
     if (millis() - last_pt3_reading_millis > PT3_SAMPLE_INTERVAL_ms) {
       last_pt3_reading_millis = millis();
       uint32_t pt3_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_9, &pt3_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_9, ADC_SINGLE_ENDED, &pt3_raw);
       if (read_success) {
-        update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(pt3_raw), &pt3_low_pass_state);
+        update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(pt3_raw),
+                        &pt3_low_pass_state);
         if ((pt3_reading_count & PT3_SEND_DOWNSAMPLE_MASK) == 0) {
           can_msg_t sensor_msg;
-          build_analog_data_16bit_msg(
-            PRIO_LOW,
-            millis(),
-            SENSOR_PT_CHANNEL_3,
-            pt3_low_pass_state,
-            &sensor_msg
-          );
+          build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_PT_CHANNEL_3,
+                                      pt3_low_pass_state, &sensor_msg);
           if (stm32h7_can_send_rdy()) {
             stm32h7_can_send(&sensor_msg);
           }
@@ -307,21 +299,17 @@ int main(void)
 #endif
 
 #if HALL1_SAMPLE_INTERVAL_ms
-    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
-    // HALL_1: ADC1 Channel 10, pin PC0
+    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
+    // revised board) HALL_1: ADC1 Channel 10, pin PC0
     if (millis() - last_hall1_reading_millis > HALL1_SAMPLE_INTERVAL_ms) {
       last_hall1_reading_millis = millis();
       uint32_t hall1_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_10, &hall1_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_10, ADC_SINGLE_ENDED, &hall1_raw);
       if (read_success) {
         can_msg_t sensor_msg;
-        build_analog_data_16bit_msg(
-          PRIO_LOW,
-          millis(),
-          SENSOR_HALL_CHANNEL_1,
-          adc_raw_to_mv(hall1_raw),
-          &sensor_msg
-        );
+        build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_HALL_CHANNEL_1,
+                                    adc_raw_to_mv(hall1_raw), &sensor_msg);
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -330,21 +318,17 @@ int main(void)
 #endif
 
 #if HALL2_SAMPLE_INTERVAL_ms
-    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
-    // HALL_2: ADC1 Channel 11, pin PC1
+    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
+    // revised board) HALL_2: ADC1 Channel 11, pin PC1
     if (millis() - last_hall2_reading_millis > HALL2_SAMPLE_INTERVAL_ms) {
       last_hall2_reading_millis = millis();
       uint32_t hall2_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_11, &hall2_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_11, ADC_SINGLE_ENDED, &hall2_raw);
       if (read_success) {
         can_msg_t sensor_msg;
-        build_analog_data_16bit_msg(
-          PRIO_LOW,
-          millis(),
-          SENSOR_HALL_CHANNEL_2,
-          adc_raw_to_mv(hall2_raw),
-          &sensor_msg
-        );
+        build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_HALL_CHANNEL_2,
+                                    adc_raw_to_mv(hall2_raw), &sensor_msg);
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -357,22 +341,21 @@ int main(void)
 #endif
 
 #if TC2_SAMPLE_INTERVAL_ms
-    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
-    // TC2: ADC1 Channel 16 (DIFFERENTIAL), pins PA0 (INP/TC2+) and PA1 (INN/TC2-)
+    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
+    // revised board) TC2: ADC1 Channel 16 (DIFFERENTIAL), pins PA0 (INP/TC2+)
+    // and PA1 (INN/TC2-)
     if (millis() - last_tc2_reading_millis > TC2_SAMPLE_INTERVAL_ms) {
       last_tc2_reading_millis = millis();
       uint32_t tc2_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_16, &tc2_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_16, ADC_DIFFERENTIAL_ENDED, &tc2_raw);
       if (read_success) {
         can_msg_t sensor_msg;
-        build_analog_data_16bit_msg(
-          PRIO_LOW,
-          millis(),
-          SENSOR_INJECTOR_BOARD_TEMP_2,
-          // Note this is differential reading so the sent value is V_diff + ADC_RESOLUTION/2.
-          adc_raw_to_mv(tc2_raw),
-          &sensor_msg
-        );
+        build_analog_sensor_16bit_msg(PRIO_LOW, millis(),
+                                    SENSOR_INJECTOR_BOARD_TEMP_2,
+                                    // Note this is differential reading so the
+                                    // sent value is V_diff + ADC_RESOLUTION/2.
+                                    adc_raw_to_mv(tc2_raw), &sensor_msg);
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -381,21 +364,18 @@ int main(void)
 #endif
 
 #if TC3_SAMPLE_INTERVAL_ms
-    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on revised board)
-    // TC3: ADC1 Channel 14, pin PA2
+    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
+    // revised board) TC3: ADC1 Channel 14, pin PA2
     if (millis() - last_tc3_reading_millis > TC3_SAMPLE_INTERVAL_ms) {
       last_tc3_reading_millis = millis();
       uint32_t tc3_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_14, &tc3_raw);
+      bool read_success =
+          read_from_adc_channel(&hadc1, ADC_CHANNEL_14, ADC_SINGLE_ENDED, &tc3_raw);
       if (read_success) {
         can_msg_t sensor_msg;
-        build_analog_data_16bit_msg(
-          PRIO_LOW,
-          millis(),
-          SENSOR_INJECTOR_BOARD_TEMP_3,
-          adc_raw_to_mv(tc3_raw),
-          &sensor_msg
-        );
+        build_analog_sensor_16bit_msg(PRIO_LOW, millis(),
+                                    SENSOR_INJECTOR_BOARD_TEMP_3,
+                                    adc_raw_to_mv(tc3_raw), &sensor_msg);
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -406,8 +386,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-
   }
   /* USER CODE END 3 */
 }
@@ -677,8 +655,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
+  while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
 }
@@ -693,8 +670,9 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* User can add his own implementation to report the file name and line
+     number, ex: printf("Wrong parameters value: file %s on line %d\r\n", file,
+     line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

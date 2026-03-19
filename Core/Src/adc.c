@@ -9,10 +9,10 @@
 #define ADC_OFFSET 0
 #define ADC_OFFSET_SIGNED_SATURATION DISABLE;
 
-bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint32_t * result) {
+bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint32_t single_differential, uint32_t * result) {
   ADC_ChannelConfTypeDef adc_channel_config = {0};
   adc_channel_config.SamplingTime = ADC_SAMPLING_TIME;
-  adc_channel_config.SingleDiff = ADC_SINGLE_ENDED;
+  adc_channel_config.SingleDiff = single_differential;
   adc_channel_config.OffsetNumber = ADC_OFFSET_NONE;
   adc_channel_config.Offset = ADC_OFFSET;
   adc_channel_config.OffsetSignedSaturation = ADC_OFFSET_SIGNED_SATURATION;
