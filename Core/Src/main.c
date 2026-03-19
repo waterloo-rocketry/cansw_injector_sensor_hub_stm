@@ -267,7 +267,7 @@ int main(void)
           build_analog_data_16bit_msg(
             PRIO_LOW,
             millis(),
-            SENSOR_PT_CHANNEL_1,
+            SENSOR_PT_CHANNEL_2,
             pt2_low_pass_state,
             &sensor_msg
           );
@@ -368,7 +368,7 @@ int main(void)
         build_analog_data_16bit_msg(
           PRIO_LOW,
           millis(),
-          SENSOR_THESEUS_TEMP_2,
+          SENSOR_INJECTOR_BOARD_TEMP_2,
           // Note this is differential reading so the sent value is V_diff + ADC_RESOLUTION/2.
           adc_raw_to_mv(tc2_raw),
           &sensor_msg
@@ -392,7 +392,7 @@ int main(void)
         build_analog_data_16bit_msg(
           PRIO_LOW,
           millis(),
-          SENSOR_THESEUS_TEMP_3,
+          SENSOR_INJECTOR_BOARD_TEMP_3,
           adc_raw_to_mv(tc3_raw),
           &sensor_msg
         );
