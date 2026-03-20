@@ -181,14 +181,14 @@ int main(void)
   // Stagger initial millis to lower peak CAN bus message rate
   uint32_t last_msg_millis = 0;
 
-  uint16_t last_pt1_reading_millis = 1;
-  uint16_t last_pt2_reading_millis = 2;
-  uint16_t last_pt3_reading_millis = 3;
-  uint16_t last_hall1_reading_millis = 4;
-  uint16_t last_hall2_reading_millis = 5;
-  uint16_t last_tc1_reading_millis = 6;
-  uint16_t last_tc2_reading_millis = 7;
-  uint16_t last_tc3_reading_millis = 8;
+  uint32_t last_pt1_reading_millis = 1;
+  uint32_t last_pt2_reading_millis = 2;
+  uint32_t last_pt3_reading_millis = 3;
+  uint32_t last_hall1_reading_millis = 4;
+  uint32_t last_hall2_reading_millis = 5;
+  uint32_t last_tc1_reading_millis = 6;
+  uint32_t last_tc2_reading_millis = 7;
+  uint32_t last_tc3_reading_millis = 8;
 
   // Used to send value over CAN once every PTx_SEND_DOWNSAMPLE_MASK+1 readings
   uint8_t pt1_reading_count = 0;
