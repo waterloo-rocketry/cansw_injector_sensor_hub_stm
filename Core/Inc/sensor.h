@@ -2,6 +2,17 @@
 #define INJ_SENSOR_HUB_SENSOR_H
 
 #include <stdint.h>
+#include <stdbool.h>
+
+#include "stm32h7xx_hal.h"
+
+/*
+ * Set the active channel for an ADC using default channel config settings and read the raw value from
+ * that ADC. ADC number of conversions must be configured to 1.
+ *
+ * Returns whether or not value was successfully read.
+ */
+bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint32_t single_differential, uint32_t * result);
 
 /*
  * Convert a raw ADC value to millivolts.
@@ -16,11 +27,5 @@ uint16_t adc_raw_to_mv(const uint32_t raw_value);
  * Convert a raw ADC value from a pressure transducer (PT) to PSI.
  */
 uint16_t pt_adc_raw_to_psi(const uint32_t raw_value);
-
-/*
- * Convert a raw 16-bit (raw_buf[0:1]) SPI reading (which contains 12-bit temp reading) from MAX6675
- * to a 16-bit temperature reading in celsius.
- */
-uint16_t tc1_spi_raw_to_celsius(const uint8_t* raw_buf);
 
 #endif /* INJ_SENSOR_HUB_SENSOR_H */

@@ -27,7 +27,6 @@
 #include "canlib.h"
 #include "low_pass_filter.h"
 
-#include "adc.h"
 #include "platform.h"
 #include "sensor.h"
 /* USER CODE END Includes */
