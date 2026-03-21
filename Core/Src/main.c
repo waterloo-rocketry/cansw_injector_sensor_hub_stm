@@ -52,11 +52,6 @@
 #define HALL1_SAMPLE_INTERVAL_ms 250 // 4 Hz
 #define HALL2_SAMPLE_INTERVAL_ms 250
 
-// Temperature (TC: thermocouple) gets read and sampled at same frequency
-#define TC1_SAMPLE_INTERVAL_ms 250 // 4 hz
-#define TC2_SAMPLE_INTERVAL_ms 250
-#define TC3_SAMPLE_INTERVAL_ms 250
-
 // Sends value once for every PTx_SEND_DOWNSAMPLE_MASK + 1 readings
 #define PT1_SEND_DOWNSAMPLE_MASK 0x3 // 1 in 4
 #define PT2_SEND_DOWNSAMPLE_MASK 0x3
@@ -186,9 +181,6 @@ int main(void)
   uint32_t last_pt3_reading_millis = 3;
   uint32_t last_hall1_reading_millis = 4;
   uint32_t last_hall2_reading_millis = 5;
-  uint32_t last_tc1_reading_millis = 6;
-  uint32_t last_tc2_reading_millis = 7;
-  uint32_t last_tc3_reading_millis = 8;
 
   // Used to send value over CAN once every PTx_SEND_DOWNSAMPLE_MASK+1 readings
   uint8_t pt1_reading_count = 0;
@@ -223,11 +215,10 @@ int main(void)
       HAL_NVIC_SystemReset();
     }
 
-    /*
-     * Read from ADC1. Number of conversions should be configured to 1.
-     */
 
-    // Pressure transducers
+    /* --------------------
+     * Pressure transducers
+     ----------------------*/
 
 #if PT1_SAMPLE_INTERVAL_ms
     // PT_1: ADC1 Channel 4, pin PC4
@@ -298,6 +289,11 @@ int main(void)
     }
 #endif
 
+
+    /* --------------------
+     * Hall sensors
+     ----------------------*/
+
 #if HALL1_SAMPLE_INTERVAL_ms
     // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
     // revised board) HALL_1: ADC1 Channel 10, pin PC0
@@ -329,53 +325,6 @@ int main(void)
         can_msg_t sensor_msg;
         build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_HALL_CHANNEL_2,
                                     adc_raw_to_mv(hall2_raw), &sensor_msg);
-        if (stm32h7_can_send_rdy()) {
-          stm32h7_can_send(&sensor_msg);
-        }
-      }
-    }
-#endif
-
-#if TC1_SAMPLE_INTERVAL_ms
-    // TODO: Read from MAX6675 using SPI
-#endif
-
-#if TC2_SAMPLE_INTERVAL_ms
-    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
-    // revised board) TC2: ADC1 Channel 16 (DIFFERENTIAL), pins PA0 (INP/TC2+)
-    // and PA1 (INN/TC2-)
-    if (millis() - last_tc2_reading_millis > TC2_SAMPLE_INTERVAL_ms) {
-      last_tc2_reading_millis = millis();
-      uint32_t tc2_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_16, ADC_DIFFERENTIAL_ENDED, &tc2_raw);
-      if (read_success) {
-        can_msg_t sensor_msg;
-        build_analog_sensor_16bit_msg(PRIO_LOW, millis(),
-                                    SENSOR_INJECTOR_BOARD_TEMP_2,
-                                    // Note this is differential reading so the
-                                    // sent value is V_diff + ADC_RESOLUTION/2.
-                                    adc_raw_to_mv(tc2_raw), &sensor_msg);
-        if (stm32h7_can_send_rdy()) {
-          stm32h7_can_send(&sensor_msg);
-        }
-      }
-    }
-#endif
-
-#if TC3_SAMPLE_INTERVAL_ms
-    // NOTE: Placeholder, possibly temporarily jumpered (will be changed on
-    // revised board) TC3: ADC1 Channel 14, pin PA2
-    if (millis() - last_tc3_reading_millis > TC3_SAMPLE_INTERVAL_ms) {
-      last_tc3_reading_millis = millis();
-      uint32_t tc3_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_14, ADC_SINGLE_ENDED, &tc3_raw);
-      if (read_success) {
-        can_msg_t sensor_msg;
-        build_analog_sensor_16bit_msg(PRIO_LOW, millis(),
-                                    SENSOR_INJECTOR_BOARD_TEMP_3,
-                                    adc_raw_to_mv(tc3_raw), &sensor_msg);
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -586,9 +535,9 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_10, GPIO_PIN_RESET);

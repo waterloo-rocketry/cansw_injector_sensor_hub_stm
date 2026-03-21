@@ -28,3 +28,4 @@ uint16_t pt_adc_raw_to_psi(const uint32_t raw_value) {
   const uint16_t value_psi = (uint16_t) (((uint32_t) value_mv - PT_OFFSET_mV) * PT_RANGE_PSI / PT_RANGE_AFTER_OFFSET_mV);
   return value_psi;
 }
+

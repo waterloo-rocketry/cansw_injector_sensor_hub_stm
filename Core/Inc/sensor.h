@@ -17,4 +17,10 @@ uint16_t adc_raw_to_mv(const uint32_t raw_value);
  */
 uint16_t pt_adc_raw_to_psi(const uint32_t raw_value);
 
+/*
+ * Convert a raw 16-bit (raw_buf[0:1]) SPI reading (which contains 12-bit temp reading) from MAX6675
+ * to a 16-bit temperature reading in celsius.
+ */
+uint16_t tc1_spi_raw_to_celsius(const uint8_t* raw_buf);
+
 #endif /* INJ_SENSOR_HUB_SENSOR_H */
