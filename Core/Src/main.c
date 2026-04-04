@@ -29,6 +29,7 @@
 
 #include "platform.h"
 #include "sensor.h"
+#include "sd_log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -84,16 +85,20 @@ ADC_HandleTypeDef hadc1;
 
 FDCAN_HandleTypeDef hfdcan1;
 
+SD_HandleTypeDef hsd1;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void PeriphCommonClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
 static void can_callback(const can_msg_t *msg);
 /* USER CODE END PFP */
@@ -135,11 +140,10 @@ static void can_callback(const can_msg_t *msg) {
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
+ * @brief  The application entry point.
+ * @retval int
+ */
+int main(void) {
 
   /* USER CODE BEGIN 1 */
 
@@ -160,6 +164,9 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
+  /* Configure the peripherals common clocks */
+  PeriphCommonClock_Config();
+
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -168,10 +175,10 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_FDCAN1_Init();
+  MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
 
   // Used to configure all
-
   // Stagger initial millis to lower peak CAN bus message rate
   uint32_t last_msg_millis = 0;
 
@@ -191,12 +198,12 @@ int main(void)
   double pt3_low_pass_state = 0;
 
   // rocketlib low_pass_filter_init to calculate alpha seems incorrect to me
-  double pt1_low_pass_alpha =
-      LOW_PASS_ALPHA(PT1_LOW_PASS_RESPONSE_TIME_ms, PT1_SAMPLE_INTERVAL_ms);
-  double pt2_low_pass_alpha =
-      LOW_PASS_ALPHA(PT2_LOW_PASS_RESPONSE_TIME_ms, PT2_SAMPLE_INTERVAL_ms);
-  double pt3_low_pass_alpha =
-      LOW_PASS_ALPHA(PT3_LOW_PASS_RESPONSE_TIME_ms, PT3_SAMPLE_INTERVAL_ms);
+  double pt1_low_pass_alpha = LOW_PASS_ALPHA(PT1_LOW_PASS_RESPONSE_TIME_ms,
+      PT1_SAMPLE_INTERVAL_ms);
+  double pt2_low_pass_alpha = LOW_PASS_ALPHA(PT2_LOW_PASS_RESPONSE_TIME_ms,
+      PT2_SAMPLE_INTERVAL_ms);
+  double pt3_low_pass_alpha = LOW_PASS_ALPHA(PT3_LOW_PASS_RESPONSE_TIME_ms,
+      PT3_SAMPLE_INTERVAL_ms);
 
   stm32h7_can_init(&hfdcan1, can_callback);
 
@@ -214,7 +221,6 @@ int main(void)
       HAL_NVIC_SystemReset();
     }
 
-
     /* --------------------
      * Pressure transducers
      ----------------------*/
@@ -224,15 +230,16 @@ int main(void)
     if (millis() - last_pt1_reading_millis > PT1_SAMPLE_INTERVAL_ms) {
       last_pt1_reading_millis = millis();
       uint32_t pt1_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_4, ADC_SINGLE_ENDED, &pt1_raw);
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_4,
+          ADC_SINGLE_ENDED, &pt1_raw);
       if (read_success) {
         update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(pt1_raw),
-                        &pt1_low_pass_state);
+            &pt1_low_pass_state);
+        can_msg_t sensor_msg;
+        build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
+            SENSOR_PT_CHANNEL_1, pt1_low_pass_state, &sensor_msg);
+        sd_log_can_message(&sensor_msg, millis());
         if ((pt1_reading_count & PT1_SEND_DOWNSAMPLE_MASK) == 0) {
-          can_msg_t sensor_msg;
-          build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_PT_CHANNEL_1,
-                                      pt1_low_pass_state, &sensor_msg);
           if (stm32h7_can_send_rdy()) {
             stm32h7_can_send(&sensor_msg);
           }
@@ -247,15 +254,16 @@ int main(void)
     if (millis() - last_pt2_reading_millis > PT2_SAMPLE_INTERVAL_ms) {
       last_pt2_reading_millis = millis();
       uint32_t pt2_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_5, ADC_SINGLE_ENDED, &pt2_raw);
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_5,
+          ADC_SINGLE_ENDED, &pt2_raw);
       if (read_success) {
         update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(pt2_raw),
-                        &pt2_low_pass_state);
+            &pt2_low_pass_state);
+        can_msg_t sensor_msg;
+        build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
+            SENSOR_PT_CHANNEL_2, pt2_low_pass_state, &sensor_msg);
+        sd_log_can_message(&sensor_msg, millis());
         if ((pt2_reading_count & PT2_SEND_DOWNSAMPLE_MASK) == 0) {
-          can_msg_t sensor_msg;
-          build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_PT_CHANNEL_2,
-                                      pt2_low_pass_state, &sensor_msg);
           if (stm32h7_can_send_rdy()) {
             stm32h7_can_send(&sensor_msg);
           }
@@ -270,15 +278,16 @@ int main(void)
     if (millis() - last_pt3_reading_millis > PT3_SAMPLE_INTERVAL_ms) {
       last_pt3_reading_millis = millis();
       uint32_t pt3_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_9, ADC_SINGLE_ENDED, &pt3_raw);
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_9,
+          ADC_SINGLE_ENDED, &pt3_raw);
       if (read_success) {
         update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(pt3_raw),
-                        &pt3_low_pass_state);
+            &pt3_low_pass_state);
+        can_msg_t sensor_msg;
+        build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
+            SENSOR_PT_CHANNEL_3, pt3_low_pass_state, &sensor_msg);
+        sd_log_can_message(&sensor_msg, millis());
         if ((pt3_reading_count & PT3_SEND_DOWNSAMPLE_MASK) == 0) {
-          can_msg_t sensor_msg;
-          build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_PT_CHANNEL_3,
-                                      pt3_low_pass_state, &sensor_msg);
           if (stm32h7_can_send_rdy()) {
             stm32h7_can_send(&sensor_msg);
           }
@@ -287,7 +296,6 @@ int main(void)
       }
     }
 #endif
-
 
     /* --------------------
      * Hall sensors
@@ -299,12 +307,13 @@ int main(void)
     if (millis() - last_hall1_reading_millis > HALL1_SAMPLE_INTERVAL_ms) {
       last_hall1_reading_millis = millis();
       uint32_t hall1_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_10, ADC_SINGLE_ENDED, &hall1_raw);
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_10,
+          ADC_SINGLE_ENDED, &hall1_raw);
       if (read_success) {
         can_msg_t sensor_msg;
-        build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_HALL_CHANNEL_1,
-                                    adc_raw_to_mv(hall1_raw), &sensor_msg);
+        build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
+            SENSOR_HALL_CHANNEL_1, adc_raw_to_mv(hall1_raw), &sensor_msg);
+        sd_log_can_message(&sensor_msg, millis());
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -318,12 +327,13 @@ int main(void)
     if (millis() - last_hall2_reading_millis > HALL2_SAMPLE_INTERVAL_ms) {
       last_hall2_reading_millis = millis();
       uint32_t hall2_raw;
-      bool read_success =
-          read_from_adc_channel(&hadc1, ADC_CHANNEL_11, ADC_SINGLE_ENDED, &hall2_raw);
+      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_11,
+          ADC_SINGLE_ENDED, &hall2_raw);
       if (read_success) {
         can_msg_t sensor_msg;
-        build_analog_sensor_16bit_msg(PRIO_LOW, millis(), SENSOR_HALL_CHANNEL_2,
-                                    adc_raw_to_mv(hall2_raw), &sensor_msg);
+        build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
+            SENSOR_HALL_CHANNEL_2, adc_raw_to_mv(hall2_raw), &sensor_msg);
+        sd_log_can_message(&sensor_msg, millis());
         if (stm32h7_can_send_rdy()) {
           stm32h7_can_send(&sensor_msg);
         }
@@ -339,27 +349,27 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+ * @brief System Clock Configuration
+ * @retval None
+ */
+void SystemClock_Config(void) {
+  RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
 
   /** Supply configuration update enable
-  */
+   */
   HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
-  while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
+  while (!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {
+  }
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
@@ -373,16 +383,15 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_3;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOMEDIUM;
   RCC_OscInitStruct.PLL.PLLFRACN = 6144;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
-                              |RCC_CLOCKTYPE_D3PCLK1|RCC_CLOCKTYPE_D1PCLK1;
+   */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+      | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 | RCC_CLOCKTYPE_D3PCLK1
+      | RCC_CLOCKTYPE_D1PCLK1;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
@@ -391,33 +400,47 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV1;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
-  {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
     Error_Handler();
   }
 }
 
 /**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ADC1_Init(void)
-{
+ * @brief Peripherals Common Clock Configuration
+ * @retval None
+ */
+void PeriphCommonClock_Config(void) {
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = { 0 };
+
+  /** Initializes the peripherals clock
+   */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_CKPER;
+  PeriphClkInitStruct.CkperClockSelection = RCC_CLKPSOURCE_HSI;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK) {
+    Error_Handler();
+  }
+}
+
+/**
+ * @brief ADC1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_ADC1_Init(void) {
 
   /* USER CODE BEGIN ADC1_Init 0 */
 
   /* USER CODE END ADC1_Init 0 */
 
-  ADC_MultiModeTypeDef multimode = {0};
-  ADC_ChannelConfTypeDef sConfig = {0};
+  ADC_MultiModeTypeDef multimode = { 0 };
+  ADC_ChannelConfTypeDef sConfig = { 0 };
 
   /* USER CODE BEGIN ADC1_Init 1 */
 
   /* USER CODE END ADC1_Init 1 */
 
   /** Common config
-  */
+   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV2;
   hadc1.Init.Resolution = ADC_RESOLUTION_16B;
@@ -435,21 +458,19 @@ static void MX_ADC1_Init(void)
   hadc1.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;
   hadc1.Init.OversamplingMode = DISABLE;
   hadc1.Init.Oversampling.Ratio = 1;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
+  if (HAL_ADC_Init(&hadc1) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure the ADC multi-mode
-  */
+   */
   multimode.Mode = ADC_MODE_INDEPENDENT;
-  if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK)
-  {
+  if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure Regular Channel
-  */
+   */
   sConfig.Channel = ADC_CHANNEL_4;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_16CYCLES_5;
@@ -457,8 +478,7 @@ static void MX_ADC1_Init(void)
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
   sConfig.OffsetSignedSaturation = DISABLE;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
@@ -468,12 +488,11 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief FDCAN1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_FDCAN1_Init(void)
-{
+ * @brief FDCAN1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_FDCAN1_Init(void) {
 
   /* USER CODE BEGIN FDCAN1_Init 0 */
 
@@ -510,8 +529,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Init.TxFifoQueueElmtsNbr = 32;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
   hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
-  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
-  {
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN1_Init 2 */
@@ -521,13 +539,41 @@ static void MX_FDCAN1_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
+ * @brief SDMMC1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_SDMMC1_SD_Init(void) {
+
+  /* USER CODE BEGIN SDMMC1_Init 0 */
+
+  /* USER CODE END SDMMC1_Init 0 */
+
+  /* USER CODE BEGIN SDMMC1_Init 1 */
+
+  /* USER CODE END SDMMC1_Init 1 */
+  hsd1.Instance = SDMMC1;
+  hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+  hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+  hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
+  hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+  hsd1.Init.ClockDiv = 0;
+  if (HAL_SD_Init(&hsd1) != HAL_OK) {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SDMMC1_Init 2 */
+
+  /* USER CODE END SDMMC1_Init 2 */
+
+}
+
+/**
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_GPIO_Init(void) {
+  GPIO_InitTypeDef GPIO_InitStruct = { 0 };
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
@@ -536,7 +582,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_10, GPIO_PIN_RESET);
@@ -548,13 +593,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  /*Configure GPIO pin : PD3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF6_SPI3;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -565,17 +608,16 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
- /* MPU Configuration */
+/* MPU Configuration */
 
-void MPU_Config(void)
-{
-  MPU_Region_InitTypeDef MPU_InitStruct = {0};
+void MPU_Config(void) {
+  MPU_Region_InitTypeDef MPU_InitStruct = { 0 };
 
   /* Disables the MPU */
   HAL_MPU_Disable();
 
   /** Initializes and configures the Region and the memory to be protected
-  */
+   */
   MPU_InitStruct.Enable = MPU_REGION_ENABLE;
   MPU_InitStruct.Number = MPU_REGION_NUMBER0;
   MPU_InitStruct.BaseAddress = 0x0;
@@ -595,11 +637,10 @@ void MPU_Config(void)
 }
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
-{
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
+void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();

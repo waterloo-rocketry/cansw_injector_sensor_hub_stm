@@ -41,7 +41,7 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
-
+extern SD_HandleTypeDef hsd1;
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
