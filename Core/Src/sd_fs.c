@@ -12,7 +12,6 @@
 
 #include "common.h"
 #include "littlefs_sd_shim.h"
-
 #include "main.h"
 #include "sd_fs.h"
 

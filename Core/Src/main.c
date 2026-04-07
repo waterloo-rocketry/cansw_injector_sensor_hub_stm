@@ -24,9 +24,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "stm32h7xx_hal.h"
+
+#include "common.h"
 #include "canlib.h"
 #include "low_pass_filter.h"
-
 #include "platform.h"
 #include "sensor.h"
 #include "sd_log.h"
@@ -205,6 +207,9 @@ int main(void) {
   double pt3_low_pass_alpha = LOW_PASS_ALPHA(PT3_LOW_PASS_RESPONSE_TIME_ms,
       PT3_SAMPLE_INTERVAL_ms);
 
+  // To track CAN send failures in test/debug. TODO: Actually log this?
+  uint32_t can_send_error_count = 0;
+
   stm32h7_can_init(&hfdcan1, can_callback);
 
   /* USER CODE END 2 */
@@ -230,21 +235,27 @@ int main(void) {
     if (millis() - last_pt1_reading_millis > PT1_SAMPLE_INTERVAL_ms) {
       last_pt1_reading_millis = millis();
       uint32_t pt1_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_4,
+      w_status_t read_status = read_from_adc_channel(&hadc1, ADC_CHANNEL_4,
           ADC_SINGLE_ENDED, &pt1_raw);
-      if (read_success) {
-        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_to_psi(pt1_raw),
+      if (read_status == W_SUCCESS) {
+        update_low_pass(pt1_low_pass_alpha, pt_adc_raw_single_to_psi(pt1_raw),
             &pt1_low_pass_state);
         can_msg_t sensor_msg;
         build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
             SENSOR_PT_CHANNEL_1, pt1_low_pass_state, &sensor_msg);
         sd_log_can_message(&sensor_msg, millis());
         if ((pt1_reading_count & PT1_SEND_DOWNSAMPLE_MASK) == 0) {
-          if (stm32h7_can_send_rdy()) {
-            stm32h7_can_send(&sensor_msg);
+          if (!stm32h7_can_send(&sensor_msg)) {
+            ++can_send_error_count;
           }
         }
         ++pt1_reading_count;
+      } else {
+        can_msg_t error_msg;
+        build_general_board_status_msg(PRIO_LOW, (uint16_t) millis(), E_IO_ERROR_OFFSET, &error_msg);
+        if (!stm32h7_can_send(&error_msg)) {
+          ++can_send_error_count;
+        }
       }
     }
 #endif
@@ -254,21 +265,27 @@ int main(void) {
     if (millis() - last_pt2_reading_millis > PT2_SAMPLE_INTERVAL_ms) {
       last_pt2_reading_millis = millis();
       uint32_t pt2_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_5,
+      w_status_t read_status = read_from_adc_channel(&hadc1, ADC_CHANNEL_5,
           ADC_SINGLE_ENDED, &pt2_raw);
-      if (read_success) {
-        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_to_psi(pt2_raw),
+      if (read_status == W_SUCCESS) {
+        update_low_pass(pt2_low_pass_alpha, pt_adc_raw_single_to_psi(pt2_raw),
             &pt2_low_pass_state);
         can_msg_t sensor_msg;
         build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
             SENSOR_PT_CHANNEL_2, pt2_low_pass_state, &sensor_msg);
         sd_log_can_message(&sensor_msg, millis());
         if ((pt2_reading_count & PT2_SEND_DOWNSAMPLE_MASK) == 0) {
-          if (stm32h7_can_send_rdy()) {
-            stm32h7_can_send(&sensor_msg);
+          if (!stm32h7_can_send(&sensor_msg)) {
+            ++can_send_error_count;
           }
         }
         ++pt2_reading_count;
+      } else {
+        can_msg_t error_msg;
+        build_general_board_status_msg(PRIO_LOW, (uint16_t) millis(), E_IO_ERROR_OFFSET, &error_msg);
+        if (!stm32h7_can_send(&error_msg)) {
+          ++can_send_error_count;
+        }
       }
     }
 #endif
@@ -278,21 +295,27 @@ int main(void) {
     if (millis() - last_pt3_reading_millis > PT3_SAMPLE_INTERVAL_ms) {
       last_pt3_reading_millis = millis();
       uint32_t pt3_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_9,
+      w_status_t read_status = read_from_adc_channel(&hadc1, ADC_CHANNEL_9,
           ADC_SINGLE_ENDED, &pt3_raw);
-      if (read_success) {
-        update_low_pass(pt3_low_pass_alpha, pt_adc_raw_to_psi(pt3_raw),
+      if (read_status == W_SUCCESS) {
+        update_low_pass(pt3_low_pass_alpha, pt_adc_raw_single_to_psi(pt3_raw),
             &pt3_low_pass_state);
         can_msg_t sensor_msg;
         build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
             SENSOR_PT_CHANNEL_3, pt3_low_pass_state, &sensor_msg);
         sd_log_can_message(&sensor_msg, millis());
         if ((pt3_reading_count & PT3_SEND_DOWNSAMPLE_MASK) == 0) {
-          if (stm32h7_can_send_rdy()) {
-            stm32h7_can_send(&sensor_msg);
+          if (!stm32h7_can_send(&sensor_msg)) {
+            ++can_send_error_count;
           }
         }
         ++pt3_reading_count;
+      } else {
+        can_msg_t error_msg;
+        build_general_board_status_msg(PRIO_LOW, (uint16_t) millis(), E_IO_ERROR_OFFSET, &error_msg);
+        if (!stm32h7_can_send(&error_msg)) {
+          ++can_send_error_count;
+        }
       }
     }
 #endif
@@ -307,15 +330,21 @@ int main(void) {
     if (millis() - last_hall1_reading_millis > HALL1_SAMPLE_INTERVAL_ms) {
       last_hall1_reading_millis = millis();
       uint32_t hall1_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_10,
+      w_status_t read_status = read_from_adc_channel(&hadc1, ADC_CHANNEL_10,
           ADC_SINGLE_ENDED, &hall1_raw);
-      if (read_success) {
+      if (read_status == W_SUCCESS) {
         can_msg_t sensor_msg;
         build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
-            SENSOR_HALL_CHANNEL_1, adc_raw_to_mv(hall1_raw), &sensor_msg);
+            SENSOR_HALL_CHANNEL_1, adc_raw_single_to_mv(hall1_raw), &sensor_msg);
         sd_log_can_message(&sensor_msg, millis());
-        if (stm32h7_can_send_rdy()) {
-          stm32h7_can_send(&sensor_msg);
+        if (!stm32h7_can_send(&sensor_msg)) {
+          ++can_send_error_count;
+        }
+      } else {
+        can_msg_t error_msg;
+        build_general_board_status_msg(PRIO_LOW, (uint16_t) millis(), E_IO_ERROR_OFFSET, &error_msg);
+        if (!stm32h7_can_send(&error_msg)) {
+          ++can_send_error_count;
         }
       }
     }
@@ -327,15 +356,21 @@ int main(void) {
     if (millis() - last_hall2_reading_millis > HALL2_SAMPLE_INTERVAL_ms) {
       last_hall2_reading_millis = millis();
       uint32_t hall2_raw;
-      bool read_success = read_from_adc_channel(&hadc1, ADC_CHANNEL_11,
+      w_status_t read_status = read_from_adc_channel(&hadc1, ADC_CHANNEL_11,
           ADC_SINGLE_ENDED, &hall2_raw);
-      if (read_success) {
+      if (read_status == W_SUCCESS) {
         can_msg_t sensor_msg;
         build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t) millis(),
-            SENSOR_HALL_CHANNEL_2, adc_raw_to_mv(hall2_raw), &sensor_msg);
+            SENSOR_HALL_CHANNEL_2, adc_raw_single_to_mv(hall2_raw), &sensor_msg);
         sd_log_can_message(&sensor_msg, millis());
-        if (stm32h7_can_send_rdy()) {
-          stm32h7_can_send(&sensor_msg);
+        if (!stm32h7_can_send(&sensor_msg)) {
+          ++can_send_error_count;
+        }
+      } else {
+        can_msg_t error_msg;
+        build_general_board_status_msg(PRIO_LOW, (uint16_t) millis(), E_IO_ERROR_OFFSET, &error_msg);
+        if (!stm32h7_can_send(&error_msg)) {
+          ++can_send_error_count;
         }
       }
     }
