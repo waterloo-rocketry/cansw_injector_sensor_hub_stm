@@ -60,6 +60,15 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+// Schematic unclear but at least on dev board D2 is white and D6 is blue (d6 pad ripped out lol)
+#define LED_D2_REG GPIOD
+#define LED_D2_PIN GPIO_PIN_10
+#define LED_D6_REG GPIOD
+#define LED_D6_PIN GPIO_PIN_9
+
+#define LED_ON GPIO_PIN_SET
+#define LED_OFF GPIO_PIN_RESET
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

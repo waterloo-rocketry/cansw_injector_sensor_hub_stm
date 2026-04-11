@@ -11,6 +11,7 @@
 #include "canlib.h"
 #include "common.h"
 
+#include "main.h"
 #include "sd_fs.h"
 #include "sd_log.h"
 
@@ -101,5 +102,6 @@ void sd_log_flush(void) {
     flush_buffer_index = (
         flush_buffer_index >= (SD_LOG_BUFFER_COUNT - 1) ?
             0 : (flush_buffer_index + 1));
+    HAL_GPIO_TogglePin(LED_D2_REG, LED_D2_PIN);
   }
 }
