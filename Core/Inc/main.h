@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -44,6 +44,7 @@ extern "C" {
 extern SD_HandleTypeDef hsd1;
 
 extern uint32_t general_board_status;
+extern bool sd_fs_init_failed;
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/

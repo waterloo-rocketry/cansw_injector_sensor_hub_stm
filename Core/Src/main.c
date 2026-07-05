@@ -74,10 +74,12 @@
 #define PT6_LOW_PASS_RESPONSE_TIME_ms 2500.0
 #define PT6_FREQ_DIVIDER 1
 
-#define STATUS_CHECK_INTERVAL_ms 500
+#define BOARD_HEARTBEAT_INTERVAL_ms 500
 
-// When defined, disable sd card logging
- #define SD_DISABLE
+// Debugging / testing defines
+
+#define NO_ERROR_HANDLER_WAIT_FOREVER
+#define NO_RESET_ON_BUS_DEAD
 
 /* USER CODE END PD */
 
@@ -132,6 +134,7 @@ static volatile uint32_t adc3_overrun_count = 0;
 
 // Declared extern in main.h
 uint32_t general_board_status = 0;
+bool sd_fs_init_failed = false;
 
 /* Handler for CAN messages. */
 static void can_callback(const can_msg_t *msg) {
@@ -224,12 +227,15 @@ int main(void)
 
 	uint32_t last_msg_millis = 0;
 	uint32_t last_adc_reading_millis = 0;
-	uint32_t last_status_millis = 0;
+	uint32_t last_board_heartbeat_millis = 0;
 
 	uint32_t can_send_failure_count = 0;
 
 	// ADC1: PT3, PT4, PT5, PT6
 	// ADC3: PT1, PT2
+
+	// voltage pts (4-6) need longer time due to high input impedance. 16 for current pt and
+	// 64 cycles for voltage pt at 64 hz adc clock + 16-bit reading seems to be accurate..
 	analog_sensor_handle_t adc1_sensor_handles[ADC1_CHANNEL_COUNT] = {
 		{
 			.config =
@@ -312,12 +318,11 @@ int main(void)
 		Error_Handler();
 	}
 
-#ifndef SD_DISABLE
-	if (sd_fs_init() != W_SUCCESS) {
-		Error_Handler();
+	sd_fs_init_failed = sd_fs_init() != W_SUCCESS;
+	if (!sd_fs_init_failed) {
+	    sd_log_init();
 	}
-	sd_log_init();
-#endif
+    HAL_GPIO_WritePin(LED_D3_REG, LED_D3_PIN, LED_OFF);
 
   /* USER CODE END 2 */
 
@@ -330,7 +335,9 @@ int main(void)
 		}
 
 		if (millis() - last_msg_millis > MAX_BUS_DEAD_TIME_ms) {
+#ifndef NO_RESET_ON_BUS_DEAD
 			HAL_NVIC_SystemReset();
+#endif
 		}
 
 		if (millis() - last_adc_reading_millis > ADC_SAMPLE_INTERVAL_ms) {
@@ -365,20 +372,36 @@ int main(void)
 			adc3_data_ready = false;
 		}
 
-		if (millis() - last_status_millis > STATUS_CHECK_INTERVAL_ms) {
-			last_status_millis = millis();
-			can_msg_t status_msg;
+		if (millis() - last_board_heartbeat_millis > BOARD_HEARTBEAT_INTERVAL_ms) {
+			last_board_heartbeat_millis = millis();
+
+			can_msg_t msg;
+
 			build_general_board_status_msg(
-				PRIO_MEDIUM, (uint16_t)millis(), general_board_status, &status_msg);
-			if (!stm32h7_can_send(&status_msg)) {
+				PRIO_MEDIUM, (uint16_t)millis(), general_board_status, &msg);
+			if (!stm32h7_can_send(&msg)) {
 				++can_send_failure_count;
 			}
+
+            HAL_Delay(20); // FIXME cannot transmit 3 messages back to back workaround
+
+            build_analog_sensor_32bit_msg(PRIO_LOW, (uint16_t) millis(), SENSOR_LOG_WRITTEN_SIZE, sd_fs_get_log_written_size(), &msg);
+            if (!stm32h7_can_send(&msg)) {
+                ++can_send_failure_count;
+            }
+
+            build_analog_sensor_32bit_msg(PRIO_LOW, (uint16_t) millis(), SENSOR_SD_LOG_FILE_NAME, sd_fs_get_log_file_name(), &msg);
+            if (!stm32h7_can_send(&msg)) {
+                ++can_send_failure_count;
+            }
+
 			HAL_GPIO_TogglePin(LED_D2_REG, LED_D2_PIN);
 		}
 
-#ifndef SD_DISABLE
-		sd_log_flush();
-#endif
+
+	    if (!sd_fs_init_failed) {
+	      sd_log_flush();
+	    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -540,6 +563,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_15;
   sConfig.Rank = ADC_REGULAR_RANK_2;
+  sConfig.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -698,9 +722,6 @@ static void MX_SDMMC1_SD_Init(void)
 {
 
   /* USER CODE BEGIN SDMMC1_Init 0 */
-#ifdef SD_DISABLE
-	return;
-#endif // SD_DISABLE defined
 
   /* USER CODE END SDMMC1_Init 0 */
 
@@ -712,7 +733,7 @@ static void MX_SDMMC1_SD_Init(void)
   hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
   hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
   hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
-  hsd1.Init.ClockDiv = 12;
+  hsd1.Init.ClockDiv = 16;
   if (HAL_SD_Init(&hsd1) != HAL_OK)
   {
     Error_Handler();
@@ -815,6 +836,9 @@ void MPU_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+#ifdef NO_ERROR_HANDLER_WAIT_FOREVER
+  return;
+#endif
 	/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
 	while (1) {}

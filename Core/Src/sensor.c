@@ -70,9 +70,9 @@ w_status_t sensor_on_read_pt(uint32_t value_mv, can_analog_sensor_id_t sensor_id
 	if (!stm32h7_can_send(&sensor_msg)) {
 		status = W_FAILURE;
 	}
-#ifndef SD_DISABLE
-	sd_log_can_message(&sensor_msg, millis());
-#endif
+	if (!sd_fs_init_failed) {
+	    sd_log_can_message(&sensor_msg, millis());
+	}
 	// USB debug drops messages when sending at very small interval apart
 	HAL_Delay(CAN_SEND_DELAY_ms);
 

@@ -15,6 +15,8 @@
 #include "sd_fs.h"
 #include "sd_log.h"
 
+#include "platform.h"
+
 #define SD_LOG_SIGNATURE_SIZE 4
 #define SD_LOG_BUFFER_COUNT 4
 
@@ -94,10 +96,12 @@ void sd_log_can_message(const can_msg_t *msg, uint32_t timestamp) {
 
 void sd_log_flush(void) {
 	if (log_buffers[flush_buffer_index].ready_to_flush) {
+	    HAL_GPIO_WritePin(LED_D3_REG, LED_D3_PIN, LED_ON);
+	      uint32_t before = millis();
 		sd_fs_write_page(log_buffers[flush_buffer_index].buffer);
 		log_buffers[flush_buffer_index].ready_to_flush = false;
 		flush_buffer_index =
 			(flush_buffer_index >= (SD_LOG_BUFFER_COUNT - 1) ? 0 : (flush_buffer_index + 1));
-		HAL_GPIO_TogglePin(LED_D2_REG, LED_D2_PIN);
-	}
+        uint32_t after = millis();
+        HAL_GPIO_WritePin(LED_D3_REG, LED_D3_PIN, LED_OFF);	}
 }

@@ -56,8 +56,6 @@ static void sd_fs_new_file(void) {
 }
 
 w_status_t sd_fs_init(void) {
-	HAL_SD_InitCard(&SD_HANDLE);
-
 	// LittleFS mount
 	if (lfsshim_sd_mount_mbr(&lfs, &SD_HANDLE) != 0) {
 		return W_FAILURE;
@@ -76,7 +74,7 @@ w_status_t sd_fs_init(void) {
 }
 
 void sd_fs_write_page(const uint8_t *page) {
-	if (lfs_file_write(&lfs, &current_log_file, page, SD_PAGE_SIZE) < 0) {
+	if (lfs_file_write(&lfs, &current_log_file, page, SD_PAGE_SIZE) != 0) {
 		// TODO: handle error
 	}
 	++page_counter;
@@ -86,4 +84,12 @@ void sd_fs_write_page(const uint8_t *page) {
 	} else {
 		lfs_file_sync(&lfs, &current_log_file);
 	}
+}
+
+uint32_t sd_fs_get_log_written_size(void) {
+  return page_counter * SD_PAGE_SIZE;
+}
+
+uint32_t sd_fs_get_log_file_name(void) {
+  return index_counter - 1; // index_counter is index of next file
 }

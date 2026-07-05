@@ -17,4 +17,14 @@ w_status_t sd_fs_init(void);
  */
 void sd_fs_write_page(const uint8_t *page);
 
+/*
+ * Get total number of bytes written so far to the SD card.
+ */
+uint32_t sd_fs_get_log_written_size(void);
+
+/*
+ * Get number of current log file, e.g. 1234 for log_1234.bin.
+ */
+uint32_t sd_fs_get_log_file_name(void);
+
 #endif /* INJ_SENSOR_HUB_FS_SD_H */
