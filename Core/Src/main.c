@@ -47,7 +47,11 @@
 #define ADC_SAMPLE_FREQ_Hz 50
 #define ADC_SAMPLE_INTERVAL_ms (1000.0 / ADC_SAMPLE_FREQ_Hz)
 
-#define ADC1_CHANNEL_COUNT 4
+// We measure some differential sensors using two single-ended channels. That pair of channels
+// counts as one sensor.
+#define ADC1_SENSOR_COUNT 3
+#define ADC3_SENSOR_COUNT 2
+#define ADC1_CHANNEL_COUNT 5
 #define ADC3_CHANNEL_COUNT 2
 
 #define PT1_LOW_PASS_ENABLED false
@@ -231,17 +235,22 @@ int main(void)
 
 	uint32_t can_send_failure_count = 0;
 
-	// ADC1: PT3, PT4, PT5, PT6
-	// ADC3: PT1, PT2
+	// ADC1 channels in order (configured in CubeMX): PT3, PT4+, PT4-, PT5+, PT5-
+	// ADC3 channels in order (configured in CubeMX): PT1, PT2
 
-	// voltage pts (4-6) need longer time due to high input impedance. 16 for current pt and
-	// 64 cycles for voltage pt at 64 hz adc clock + 16-bit reading seems to be accurate..
-	analog_sensor_handle_t adc1_sensor_handles[ADC1_CHANNEL_COUNT] = {
+	// voltage pts (4,5) need longer time due to high input impedance. 16 for current pt and
+	// 64 cycles for voltage pt at 64 hz adc clock + 16-bit reading seems to be accurate.
+
+    // For differential sensors (Kulite PTs), we only use one handle for the two single-ended channels.
+	analog_sensor_handle_t adc1_sensor_handles[ADC1_SENSOR_COUNT] = {
 		{
 			.config =
 				{
 					.sample_freq_divider = PT3_FREQ_DIVIDER,
-					.on_read = sensor_on_read_pt,
+					.is_differential = false,
+					.signal_pos_adc_index = 0,
+				    .signal_neg_adc_index = 0, // not used
+                    .on_read = sensor_on_read_pt_ifm_5402,
 					.sensor_id = SENSOR_PT_CHANNEL_3,
 					.low_pass_enabled = PT3_LOW_PASS_ENABLED,
 					.low_pass_alpha = LOW_PASS_ALPHA(PT3_LOW_PASS_RESPONSE_TIME_ms,
@@ -253,7 +262,10 @@ int main(void)
 			.config =
 				{
 					.sample_freq_divider = PT4_FREQ_DIVIDER,
-					.on_read = sensor_on_read_pt,
+                    .is_differential = true,
+                    .signal_pos_adc_index = 1,
+                    .signal_neg_adc_index = 2,
+                    .on_read = sensor_on_read_pt_kulite,
 					.sensor_id = SENSOR_PT_CHANNEL_4,
 					.low_pass_enabled = PT4_LOW_PASS_ENABLED,
 					.low_pass_alpha = LOW_PASS_ALPHA(PT4_LOW_PASS_RESPONSE_TIME_ms,
@@ -265,7 +277,10 @@ int main(void)
 			.config =
 				{
 					.sample_freq_divider = PT5_FREQ_DIVIDER,
-					.on_read = sensor_on_read_pt,
+                    .is_differential = true,
+                    .signal_pos_adc_index = 3,
+                    .signal_neg_adc_index = 4, // not used
+                    .on_read = sensor_on_read_pt_kulite,
 					.sensor_id = SENSOR_PT_CHANNEL_5,
 					.low_pass_enabled = PT5_LOW_PASS_ENABLED,
 					.low_pass_alpha = LOW_PASS_ALPHA(PT5_LOW_PASS_RESPONSE_TIME_ms,
@@ -273,26 +288,16 @@ int main(void)
 				},
 			.freq_div_counter = 1,
 		},
-		{
-			.config =
-				{
-					.sample_freq_divider = PT6_FREQ_DIVIDER,
-					.on_read = sensor_on_read_pt,
-					.sensor_id = SENSOR_PT_CHANNEL_6,
-					.low_pass_enabled = PT6_LOW_PASS_ENABLED,
-					.low_pass_alpha = LOW_PASS_ALPHA(PT6_LOW_PASS_RESPONSE_TIME_ms,
-													 ADC_SAMPLE_FREQ_Hz / PT6_FREQ_DIVIDER),
-				},
-			.freq_div_counter = 1,
-		},
-
 	};
-	analog_sensor_handle_t adc3_sensor_handles[ADC3_CHANNEL_COUNT] = {
+	analog_sensor_handle_t adc3_sensor_handles[ADC3_SENSOR_COUNT] = {
 		{
 			.config =
 				{
 					.sample_freq_divider = PT1_FREQ_DIVIDER,
-					.on_read = sensor_on_read_pt,
+                    .is_differential = false,
+                    .signal_pos_adc_index = 0,
+                    .signal_neg_adc_index = 0, // not used
+					.on_read = sensor_on_read_pt_ifm_5402,
 					.sensor_id = SENSOR_PT_CHANNEL_1,
 					.low_pass_enabled = PT1_LOW_PASS_ENABLED,
 					.low_pass_alpha = LOW_PASS_ALPHA(PT1_LOW_PASS_RESPONSE_TIME_ms,
@@ -304,7 +309,10 @@ int main(void)
 			.config =
 				{
 					.sample_freq_divider = PT2_FREQ_DIVIDER,
-					.on_read = sensor_on_read_pt,
+                    .is_differential = false,
+                    .signal_pos_adc_index = 1,
+                    .signal_neg_adc_index = 0, // not used
+					.on_read = sensor_on_read_pt_ifm_5402,
 					.sensor_id = SENSOR_PT_CHANNEL_2,
 					.low_pass_enabled = PT2_LOW_PASS_ENABLED,
 					.low_pass_alpha = LOW_PASS_ALPHA(PT2_LOW_PASS_RESPONSE_TIME_ms,
@@ -356,7 +364,7 @@ int main(void)
 
 		if (adc1_data_ready) {
 			w_status_t handle_read_status =
-				handle_adc_scan_ready(adc1_read_buffer, adc1_sensor_handles, ADC1_CHANNEL_COUNT);
+				handle_adc_scan_ready(adc1_read_buffer, adc1_sensor_handles, ADC1_SENSOR_COUNT);
 			if (handle_read_status != W_SUCCESS) {
 				++can_send_failure_count;
 			}
@@ -365,7 +373,7 @@ int main(void)
 
 		if (adc3_data_ready) {
 			w_status_t handle_read_status =
-				handle_adc_scan_ready(adc3_read_buffer, adc3_sensor_handles, ADC3_CHANNEL_COUNT);
+				handle_adc_scan_ready(adc3_read_buffer, adc3_sensor_handles, ADC3_SENSOR_COUNT);
 			if (handle_read_status != W_SUCCESS) {
 				++can_send_failure_count;
 			}
@@ -522,7 +530,7 @@ static void MX_ADC1_Init(void)
   hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
-  hadc1.Init.NbrOfConversion = 4;
+  hadc1.Init.NbrOfConversion = 5;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.NbrOfDiscConversion = 1;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
@@ -561,7 +569,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_15;
+  sConfig.Channel = ADC_CHANNEL_17;
   sConfig.Rank = ADC_REGULAR_RANK_2;
   sConfig.SamplingTime = ADC_SAMPLETIME_64CYCLES_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
@@ -571,7 +579,7 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_14;
+  sConfig.Channel = ADC_CHANNEL_15;
   sConfig.Rank = ADC_REGULAR_RANK_3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
@@ -580,8 +588,17 @@ static void MX_ADC1_Init(void)
 
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_17;
+  sConfig.Channel = ADC_CHANNEL_9;
   sConfig.Rank = ADC_REGULAR_RANK_4;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_14;
+  sConfig.Rank = ADC_REGULAR_RANK_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -779,6 +796,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */

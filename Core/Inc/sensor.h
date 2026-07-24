@@ -14,6 +14,11 @@
  *
  * @param sample_freq_divider  Only sample one of every sample_freq_divider ADC readings (divides
  * global ADC sample rate).
+ * @param is_differential      When true, take differential voltage measurement from two single-ended  ADC channels.
+*                              This is not using the STM32's built-in differential ADC mode.
+*  @param signal_pos_adc_index The index of the positive ADC channel. When !is_differential, this is the only ADC channel for the reading.
+*                              This is one less (zero-indexed) than the Rank configured for ADC channels in HAL.
+*  @param signal_neg_adc_index The index of the negative ADC channel, only used when is_differential.
  * @param on_read              Callback invoked with the processed reading. Takes the value in mV
  * and the sensor's CAN ID.
  * @param sensor_id            The sensor's canlib ID.
@@ -23,6 +28,9 @@
  */
 typedef struct {
 	uint8_t sample_freq_divider;
+	bool is_differential;
+	uint8_t signal_pos_adc_index;
+	uint8_t signal_neg_adc_index;
 	w_status_t (*on_read)(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
 	can_analog_sensor_id_t sensor_id;
 	bool low_pass_enabled;
@@ -44,9 +52,11 @@ typedef struct {
 } analog_sensor_handle_t;
 
 w_status_t handle_adc_scan_ready(volatile uint16_t *adc_channels_buffer,
-								 analog_sensor_handle_t *sensor_handles, uint8_t adc_channel_count);
+								 analog_sensor_handle_t *sensor_handles, uint8_t analog_sensor_count);
 
-w_status_t sensor_on_read_pt(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
+w_status_t sensor_on_read_pt_kulite(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
+
+w_status_t sensor_on_read_pt_ifm_5402(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
 
 w_status_t sensor_on_read_v_batt(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
 
