@@ -87,9 +87,9 @@ w_status_t sensor_on_read_v_batt(uint32_t value_mv, can_analog_sensor_id_t senso
 		status = W_FAILURE;
 	}
 	if (value_mv > V_BATT_UPPER_THRESHOLD_mV) {
-		general_board_status |= (1 << E_12V_OVER_VOLTAGE_OFFSET);
+		general_board_status |= (1 << E_12V_OVER_VOLT_OFFSET);
 	} else if (value_mv < V_BATT_LOWER_THRESHOLD_mV) {
-		general_board_status |= (1 << E_12V_UNDER_VOLTAGE_OFFSET);
+		general_board_status |= (1 << E_12V_UNDER_VOLT_OFFSET);
 	}
 	// USB debug drops messages when sending at very small interval apart
 	HAL_Delay(CAN_SEND_DELAY_ms);
