@@ -16,12 +16,10 @@
 #define VREF_mV 3300 // Assumed, we can maybe calibrate this better
 #define ADC_RESOLUTION 65535 // 16-bit
 
-// Used to convert mV -> 0.1 PSI.
-
 // Kulite: Max range 70 bar = 1015 PSI, corresponding to 5V, scaled to 3.066 V at ADC
-#define KULITE_PSI_PER_10_mV (1015.0 * 10.0 / 3066.0)
+#define KULITE_PSI_PER_mV (1015.0 / 3066.0)
 // IFM 5402: 4 to 20mA scaled to 600 to 3000 mV at ADC corresponds to 0 to 2000 PSI
-#define IFM_5402_PSI_PER_10_mV (2000.0 * 10.0 / 2400.0)
+#define IFM_5402_PSI_PER_mV (2000.0 / 2400.0)
 #define IFM_5402_OFFSET_mV 600
 
 // multiply by four to get actual battery voltage
@@ -81,9 +79,7 @@ static w_status_t sensor_on_read_pt(uint32_t value_tenth_psi, can_analog_sensor_
     if (!stm32h7_can_send(&sensor_msg)) {
         status = W_FAILURE;
     }
-    if (!sd_fs_init_failed) {
-        sd_log_can_message(&sensor_msg, millis());
-    }
+      sd_log_can_message(&sensor_msg, millis());
     // USB debug drops messages when sending at very small interval apart
     HAL_Delay(CAN_SEND_DELAY_ms);
 
@@ -91,14 +87,14 @@ static w_status_t sensor_on_read_pt(uint32_t value_tenth_psi, can_analog_sensor_
 }
 
 w_status_t sensor_on_read_pt_kulite(uint32_t value_mv, can_analog_sensor_id_t sensor_id) {
-  return sensor_on_read_pt((uint32_t) (value_mv * KULITE_PSI_PER_10_mV), sensor_id);
+  return sensor_on_read_pt((uint32_t) (value_mv * KULITE_PSI_PER_mV), sensor_id);
 }
 
 w_status_t sensor_on_read_pt_ifm_5402(uint32_t value_mv, can_analog_sensor_id_t sensor_id) {
   if (value_mv < IFM_5402_OFFSET_mV) {
     value_mv = 600;
   }
-  return sensor_on_read_pt((uint32_t) ((value_mv - IFM_5402_OFFSET_mV) * IFM_5402_PSI_PER_10_mV), sensor_id);
+  return sensor_on_read_pt((uint32_t) ((value_mv - IFM_5402_OFFSET_mV) * IFM_5402_PSI_PER_mV), sensor_id);
 }
 
 w_status_t sensor_on_read_v_batt(uint32_t value_mv, can_analog_sensor_id_t sensor_id) {

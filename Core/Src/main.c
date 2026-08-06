@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -138,7 +139,6 @@ static volatile uint32_t adc3_overrun_count = 0;
 
 // Declared extern in main.h
 uint32_t general_board_status = 0;
-bool sd_fs_init_failed = false;
 
 /* Handler for CAN messages. */
 static void can_callback(const can_msg_t *msg) {
@@ -227,6 +227,7 @@ int main(void)
   MX_SDMMC1_SD_Init();
   MX_ADC3_Init();
   MX_FDCAN1_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
 	uint32_t last_msg_millis = 0;
@@ -326,9 +327,17 @@ int main(void)
 		Error_Handler();
 	}
 
-	sd_fs_init_failed = sd_fs_init() != W_SUCCESS;
-	if (!sd_fs_init_failed) {
+	if (sd_fs_init() == W_SUCCESS) {
 	    sd_log_init();
+	} else {
+	  while (1) {
+	    can_msg_t msg;
+        HAL_Delay(20); // FIXME cannot transmit 3 messages back to back workaround
+        build_general_board_status_msg(
+            PRIO_HIGH, millis(), general_board_status | (1 << E_FS_ERROR_OFFSET), &msg);
+        stm32h7_can_send(&msg);
+        HAL_Delay(500);
+	  }
 	}
     HAL_GPIO_WritePin(LED_D3_REG, LED_D3_PIN, LED_OFF);
 
@@ -383,8 +392,10 @@ int main(void)
 		if (millis() - last_board_heartbeat_millis > BOARD_HEARTBEAT_INTERVAL_ms) {
 			last_board_heartbeat_millis = millis();
 
+
 			can_msg_t msg;
 
+			general_board_status |= sd_fs_get_error();
 			build_general_board_status_msg(
 				PRIO_MEDIUM, (uint16_t)millis(), general_board_status, &msg);
 			if (!stm32h7_can_send(&msg)) {
@@ -407,9 +418,7 @@ int main(void)
 		}
 
 
-	    if (!sd_fs_init_failed) {
-	      sd_log_flush();
-	    }
+        sd_log_flush();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
