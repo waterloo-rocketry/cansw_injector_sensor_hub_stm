@@ -44,9 +44,12 @@ w_status_t handle_adc_scan_ready(volatile uint16_t *adc_channels_buffer,
 		if (--(sensor_h->freq_div_counter) == 0) {
 			sensor_h->freq_div_counter = sensor_h->config.sample_freq_divider;
 
-			uint16_t value_mv = ((uint32_t)adc_channels_buffer[sensor_h->config.signal_pos_adc_index]) * VREF_mV / ADC_RESOLUTION;
+			uint16_t value_mv =
+				((uint32_t)adc_channels_buffer[sensor_h->config.signal_pos_adc_index]) * VREF_mV /
+				ADC_RESOLUTION;
 			if (sensor_h->config.is_differential) {
-			  value_mv -= ((uint32_t)adc_channels_buffer[sensor_h->config.signal_neg_adc_index]) * VREF_mV / ADC_RESOLUTION;
+				value_mv -= ((uint32_t)adc_channels_buffer[sensor_h->config.signal_neg_adc_index]) *
+							VREF_mV / ADC_RESOLUTION;
 			}
 			if (sensor_h->config.low_pass_enabled) {
 				double low_pass_output = (double)sensor_h->reading_value_mv;
@@ -73,28 +76,30 @@ w_status_t handle_adc_scan_ready(volatile uint16_t *adc_channels_buffer,
 }
 
 static w_status_t sensor_on_read_pt(uint32_t value_tenth_psi, can_analog_sensor_id_t sensor_id) {
-    w_status_t status = W_SUCCESS;
-    can_msg_t sensor_msg;
-    build_analog_sensor_16bit_msg(PRIO_LOW, (uint16_t)millis(), sensor_id, value_tenth_psi, &sensor_msg);
-    if (!stm32h7_can_send(&sensor_msg)) {
-        status = W_FAILURE;
-    }
-      sd_log_can_message(&sensor_msg, millis());
-    // USB debug drops messages when sending at very small interval apart
-    HAL_Delay(CAN_SEND_DELAY_ms);
+	w_status_t status = W_SUCCESS;
+	can_msg_t sensor_msg;
+	build_analog_sensor_16bit_msg(
+		PRIO_LOW, (uint16_t)millis(), sensor_id, value_tenth_psi, &sensor_msg);
+	if (!stm32h7_can_send(&sensor_msg)) {
+		status = W_FAILURE;
+	}
+	sd_log_can_message(&sensor_msg, millis());
+	// USB debug drops messages when sending at very small interval apart
+	HAL_Delay(CAN_SEND_DELAY_ms);
 
-    return status;
+	return status;
 }
 
 w_status_t sensor_on_read_pt_kulite(uint32_t value_mv, can_analog_sensor_id_t sensor_id) {
-  return sensor_on_read_pt((uint32_t) (value_mv * KULITE_PSI_PER_mV), sensor_id);
+	return sensor_on_read_pt((uint32_t)(value_mv * KULITE_PSI_PER_mV), sensor_id);
 }
 
 w_status_t sensor_on_read_pt_ifm_5402(uint32_t value_mv, can_analog_sensor_id_t sensor_id) {
-  if (value_mv < IFM_5402_OFFSET_mV) {
-    value_mv = 600;
-  }
-  return sensor_on_read_pt((uint32_t) ((value_mv - IFM_5402_OFFSET_mV) * IFM_5402_PSI_PER_mV), sensor_id);
+	if (value_mv < IFM_5402_OFFSET_mV) {
+		value_mv = 600;
+	}
+	return sensor_on_read_pt((uint32_t)((value_mv - IFM_5402_OFFSET_mV) * IFM_5402_PSI_PER_mV),
+							 sensor_id);
 }
 
 w_status_t sensor_on_read_v_batt(uint32_t value_mv, can_analog_sensor_id_t sensor_id) {

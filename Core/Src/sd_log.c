@@ -100,5 +100,6 @@ void sd_log_flush(void) {
 		log_buffers[flush_buffer_index].ready_to_flush = false;
 		flush_buffer_index =
 			(flush_buffer_index >= (SD_LOG_BUFFER_COUNT - 1) ? 0 : (flush_buffer_index + 1));
-        HAL_GPIO_TogglePin(LED_D3_REG, LED_D3_PIN);	}
+		HAL_GPIO_TogglePin(LED_D3_REG, LED_D3_PIN);
+	}
 }
