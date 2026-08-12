@@ -1,31 +1,66 @@
 #ifndef INJ_SENSOR_HUB_SENSOR_H
 #define INJ_SENSOR_HUB_SENSOR_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "stm32h7xx_hal.h"
 
-/*
- * Set the active channel for an ADC using default channel config settings and read the raw value from
- * that ADC. ADC number of conversions must be configured to 1.
+#include "canlib.h"
+#include "common.h"
+
+/**
+ * @brief Config type of an analog sensor (one adc channel).
  *
- * Returns whether or not value was successfully read.
+ * @param sample_freq_divider  Only sample one of every sample_freq_divider ADC readings (divides
+ * global ADC sample rate).
+ * @param is_differential      When true, take differential voltage measurement from two
+ * single-ended  ADC channels. This is not using the STM32's built-in differential ADC mode.
+ *  @param signal_pos_adc_index The index of the positive ADC channel. When !is_differential, this
+ * is the only ADC channel for the reading. This is one less (zero-indexed) than the Rank configured
+ * for ADC channels in HAL.
+ *  @param signal_neg_adc_index The index of the negative ADC channel, only used when
+ * is_differential.
+ * @param on_read              Callback invoked with the processed reading. Takes the value in mV
+ * and the sensor's CAN ID.
+ * @param sensor_id            The sensor's canlib ID.
+ * @param low_pass_enabled     Whether low pass filter is enabled.
+ * @param low_pass_alpha       Alpha value for low pass filter, within range (0, 1] where 1 is no
+ * smoothing/filter at all.
  */
-bool read_from_adc_channel(ADC_HandleTypeDef * hadc, uint32_t adc_channel, uint32_t single_differential, uint32_t * result);
+typedef struct {
+	uint8_t sample_freq_divider;
+	bool is_differential;
+	uint8_t signal_pos_adc_index;
+	uint8_t signal_neg_adc_index;
+	w_status_t (*on_read)(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
+	can_analog_sensor_id_t sensor_id;
+	bool low_pass_enabled;
+	double low_pass_alpha;
+} analog_sensor_config_t;
 
 /*
- * Convert a raw ADC value to millivolts.
+ * @brief Handle type of an analog sensor (one adc channel).
  *
- * For single-ended input, this returns the difference between input voltage (V_INP) and ground (V_REF-).
- * For differential input, this returns (V_INP - V_INN) + ADC_FULL_SCALE/2, i.e. it's centered
- * around ADC_FULL_SCALE/2. (25.4.7 in ref manual)
+ * @param config Configuration of sensor.
+ * @param reading_value_mv Reading value in millivolts, also used to get previous value in low pass
+ * filter.
+ * @param freq_div_counter Counter used to apply sample_freq_divider.
  */
-uint16_t adc_raw_to_mv(const uint32_t raw_value);
+typedef struct {
+	analog_sensor_config_t config;
+	uint16_t reading_value_mv;
+	uint8_t freq_div_counter;
+} analog_sensor_handle_t;
 
-/*
- * Convert a raw ADC value from a pressure transducer (PT) to PSI.
- */
-uint16_t pt_adc_raw_to_psi(const uint32_t raw_value);
+w_status_t handle_adc_scan_ready(volatile uint16_t *adc_channels_buffer,
+								 analog_sensor_handle_t *sensor_handles,
+								 uint8_t analog_sensor_count);
+
+w_status_t sensor_on_read_pt_kulite(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
+
+w_status_t sensor_on_read_pt_ifm_5402(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
+
+w_status_t sensor_on_read_v_batt(uint32_t value_mv, can_analog_sensor_id_t sensor_id);
 
 #endif /* INJ_SENSOR_HUB_SENSOR_H */
